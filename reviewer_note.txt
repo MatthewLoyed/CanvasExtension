@@ -1,0 +1,24 @@
+### Tester Instructions for Download Functionality:
+
+To verify the "Downloads" (Red Potassium) functionality:
+
+1. **Login Required**: Log in to a Canvas LMS instance (e.g., https://canvas.instructure.com or your university's Canvas URL).
+   * Note: The extension only activates on domains matching `*.instructure.com` or specific university Canvas domains listed in the manifest.
+2. **Navigate**: Go to a course page that contains files (e.g., "Modules" or "Files" section).
+3. **Open Side Panel**: Click the extension icon in the toolbar and select "Open Side Panel" (or click the action button if configured).
+4. **Scan**: The extension will automatically scan the current page for resources.
+   * *Success Indicator*: You should see a list of detected files (PDFs, PPTs, etc.) appear in the side panel.
+   * *If Empty*: If the list is empty, ensure the current page actually contains direct file links.
+5. **Test Single Download**: Click the "Download" icon (down arrow) next to any file in the list.
+   * **Expected Result**: The file successfully downloads via the browser's native download manager.
+   * **Note on Spinners**: You may see a brief "Spinner" icon. This is the **Recursive URL Unpacker** active (see below).
+6. **Test Bulk Download**: Click the "Bulk Download" button at the bottom.
+   * **Expected Result**: All listed files should download sequentially into organized folders.
+
+**Logic Update Note (The "HTML Fix")**: 
+We have implemented an **Authenticated API Proxy** to specifically fix the issue where intermediate policy pages (HTML wrappers) were being downloaded instead of the PDF.
+
+1.  **API Delegation**: Instead of scraping HTML, the extension identifies the internal Canvas File ID.
+2.  **Session Proxy**: It delegates the resolution to a background "Proxy" (via the Content Script). This ensures the request uses the user's active login cookies.
+3.  **Direct Cluster Resolution**: It fetches the direct binary URL from the official Canvas API (`/api/v1/files/[ID]`).
+4.  **Security**: If a direct API link cannot be resolved, it falls back to a **Recursive URL Unpacker** that searches the HTML for a source link, ensuring the user always gets the actual resource and never a broken `.htm` wrapper.

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Canvas Modules Test</title>
+    <style>
+        /* Basic styling to mimic Canvas structure visually */
+        .context_module { border: 1px solid #ccc; margin: 10px; padding: 10px; }
+        .ig-header { background: #f5f5f5; padding: 5px; font-weight: bold; }
+        .module-item-row { padding: 5px; border-bottom: 1px solid #eee; }
+        .icon-document { color: #333; } /* Old icon */
+        .icon-pdf { color: red; }
+        .icon-link { color: blue; }
+    </style>
+</head>
+<body>
+    <div id="content" class="ic-Layout-contentMain">
+        
+        <!-- Module 1: Messy & Deep -->
+        <div class="context_module" aria-label="Module 1">
+            <div class="ig-header">
+                <span class="name">Week 1: Introduction</span>
+            </div>
+            <div class="content">
+                <ul class="ig-list">
+                    <!-- Wiki Page 1: Standard /pages/ link -->
+                    <li class="module-item-row">
+                        <div class="module-item-container">
+                            <div class="type_wiki_page">
+                                <a href="/courses/101/pages/welcome-to-class" class="ig-title" title="Welcome Page">
+                                    <i class="icon-document"></i> Welcome to Class
+                                </a>
+                            </div>
+                        </div>
+                    </li>
+
+                    <!-- PDF 1: Direct File Link -->
+                    <li class="module-item-row">
+                        <div class="deep-nest">
+                            <span>
+                                <a href="/courses/101/files/999/download?download_frd=1" class="item_link" title="Syllabus_2024.pdf">
+                                    <i class="icon-pdf"></i> Course Syllabus.pdf
+                                </a>
+                            </span>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Module 2: Inconsistent Nesting -->
+        <div class="context_module">
+            <h2 class="ig-header-title">Week 2: Resources</h2>
+            
+            <!-- Wiki Page 2: /modules/items/ redirect (Common pattern) -->
+            <div class="module-item-row">
+                <a href="/courses/101/modules/items/500" data-api-endpoint="/api/v1/courses/101/modules/items/500">
+                    <i class="icon-document"></i> Lecture Notes (Wiki)
+                </a> 
+                <!-- Note: The scraper should ideally CHECK this if it looks like a file, but deep scrape it if it looks like a page -->
+            </div>
+
+            <!-- YouTube Link (Should be ignored) -->
+            <div class="module-item-row">
+                <a href="https://www.youtube.com/watch?v=dQw4w9WgXcQ" class="external_link" target="_blank">
+                    <i class="icon-link"></i> Essential Viewing
+                </a>
+            </div>
+
+            <!-- Nested PDF 2 -->
+            <div class="something-messy">
+                <div>
+                    <div>
+                        <a href="/courses/101/files/888/download?wrap=1" title="Reading_Ch1.pdf">
+                            <i class="icon-pdf"></i> Chapter 1 Reading
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Module 3: Deep Deep Nesting & Mixed Content -->
+        <div class="context_module">
+            <div class="header-bar">
+                <h3>Week 3: Advanced Topics</h3>
+            </div>
+            
+            <!-- Wiki Page 3 (Deeply nested) -->
+            <div class="level-1">
+                <div class="level-2">
+                    <div class="level-3">
+                         <a href="/courses/101/pages/advanced-concepts" class="wiki-link">
+                            Deep Concepts Page
+                         </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PDF 3 -->
+            <p>
+                Required Download: <a href="/courses/101/files/777/download">Worksheet.pdf</a>
+            </p>
+
+            <!-- Wiki Page 4 -->
+            <div>
+                <a href="/courses/101/pages/group-project-guidelines">Group Project Info</a>
+            </div>
+
+            <!-- Wiki Page 5 -->
+            <a href="/courses/101/pages/final-exam-prep">Final Exam Prep</a>
+
+            <!-- Another YouTube -->
+            <a href="https://youtu.be/example">Course Trailer</a>
+        </div>
+
+    </div>
+</body>
+</html>

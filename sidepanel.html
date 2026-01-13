@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Canvas Resources</title>
+    <link rel="stylesheet" href="sidepanel.css">
+  </head>
+  <body>
+    <header>
+      <div class="title-row">
+        <img src="icons/icon128.png" class="logo-icon" alt="Canvas Resources Logo">
+        <h1>Course Resources</h1>
+      </div>
+      <div class="search-container">
+        <input type="text" id="search-input" class="search-input" placeholder="Search files...">
+      </div>
+    </header>
+
+    <div id="file-list">
+      <div class="message-placeholder">
+        <p>No files found yet.</p>
+        <p>Navigate to a Course page to scan.</p>
+      </div>
+    </div>
+    
+    <div id="status-footer" class="status-footer" style="display: none;">
+      <!-- Populated by JS -->
+    </div>
+
+    <footer>
+      <div class="footer-buttons">
+        <button id="btn-deep-scan" class="btn-primary">
+          <span class="pro-badge">PRO</span>
+          Deep Scan
+        </button>
+        <button id="btn-bulk-download" class="btn-secondary">
+          Download All
+        </button>
+      </div>
+    </footer>
+
+    <!-- Fake Door Modal -->
+    <div id="pro-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-content">
+        <button id="modal-close" class="modal-close">&times;</button>
+        <div class="modal-header">
+          <h2>🚀 Coming Soon: Deep Scan</h2>
+        </div>
+        <div class="modal-body">
+          <p>Tired of clicking through every module? <strong>Deep Scan</strong> automatically crawls your entire course to find every PDF, Slide, and Doc—even the ones hidden in sub-folders.</p>
+          <p><strong>Deep Scan</strong> is currently in closed beta. Want early access and a <strong>50% discount</strong> when we launch?</p>
+          
+          <div id="modal-form">
+            <input type="email" id="waitlist-email" placeholder="Enter your email" class="modal-input">
+            <button id="btn-notify-me" class="btn-cta">Notify Me</button>
+          </div>
+          <div id="modal-success" style="display: none;">
+            <p class="success-msg">🎉 Success! We'll reach out soon.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="sidepanel.js"></script>
+  </body>
+</html>

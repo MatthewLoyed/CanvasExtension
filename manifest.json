@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Canvas Resource Sidekick: Bulk File Downloader",
+  "version": "1.0.0",
+  "description": "Scrapes and lists course resources from Canvas pages. Works with PDFs, Excel sheets, Word docs, PowerPoints, and more!",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "sidePanel",
+    "downloads",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://*.instructure.com/*",
+    "*://*.msstate.edu/*",
+    "*://*.canvas-user-content.com/*",
+    "*://learnx.alueducation.com/*",
+    "https://formspree.io/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.instructure.com/*",
+        "*://canvas.msstate.edu/*",
+        "*://learnx.alueducation.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_end"
+    }
+  ]
+}
