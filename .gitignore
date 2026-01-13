@@ -12,3 +12,7 @@ node_modules/
 # IDE settings
 .vscode/
 .idea/
+
+# SECURITY - NEVER COMMIT THESE
+*.pem
+.env
