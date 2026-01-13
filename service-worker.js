@@ -13,7 +13,6 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
         } catch (e) {
             // If ping fails, the content script isn't ready. 
             // We don't need to do anything; the script will talk to us when it loads.
-            console.log("Tab updated, but content script not yet listening. Skipping message.");
         }
     }
 });

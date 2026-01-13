@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Canvas Resource Sidekick: Bulk File Downloader",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Scrapes and lists course resources from Canvas pages. Works with PDFs, Excel sheets, Word docs, PowerPoints, and more!",
   "icons": {
     "16": "icons/icon16.png",

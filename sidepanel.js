@@ -183,10 +183,6 @@ class DownloadQueue {
     this.active++;
     const item = this.queue.shift();
 
-    // EXTREME DEBUGGING START
-    console.group("🛑 DEBUG: Single Download");
-    console.log("Queue Processing Item:", item.text);
-
     // Find the button for this item to show status
     const btn = findButtonForUrl(item.href);
     if (btn) setButtonState(btn, 'loading');
@@ -202,7 +198,7 @@ class DownloadQueue {
       const safeCourse = getSafeFilename(item.courseName || "General", "").replace(/\./g, '_');
       const relativePath = `Canvas_Resources/${safeCourse}/${safeName}`;
 
-      console.log("%c FINAL PAYLOAD: Downloading " + finalUrl, "color: blue; font-weight: bold;");
+
 
       chrome.downloads.download({
         url: finalUrl,
@@ -211,13 +207,9 @@ class DownloadQueue {
       }, (id) => {
         const err = chrome.runtime.lastError;
         if (err) {
-          console.error("🛑 CRITICAL DOWNLOAD ERROR:", err);
-          console.groupEnd(); // End the debug group
           if (btn) setButtonState(btn, 'error', err.message);
           this.errors++;
         } else {
-          console.log("✅ Download Started successfully. ID:", id);
-          console.groupEnd(); // End the debug group
           if (btn) setButtonState(btn, 'success');
           this.completed++;
         }
@@ -227,7 +219,6 @@ class DownloadQueue {
       });
 
     } catch (err) {
-      console.error("Resolution failed for", item.href, err);
       if (btn) setButtonState(btn, 'error', err.message);
       this.errors++;
       this.active--;
@@ -343,8 +334,6 @@ async function resolveDownloadUrl(originalUrl) {
 
     // IF SERVER SAYS IT'S HTML (Even if URL ends in .pdf)
     if (type && type.includes('text/html')) {
-        console.log(`⚠️ URL ends in extension but server served HTML. Unpacking: ${u.href}`);
-
       // --- USE YOUR FUNCTION HERE ---
       const realFileUrl = await unpackIntermediatePage(u.href);
 
@@ -359,7 +348,6 @@ async function resolveDownloadUrl(originalUrl) {
     return u.href;
 
   } catch (e) {
-    console.warn("Verification failed (CORS?):", e);
     // If we can't verify it, we return null to be safe, 
     // OR we can try to unpack it blindly if you prefer aggressive scraping.
     return null;
@@ -392,16 +380,14 @@ async function unpackIntermediatePage(wrapperUrl) {
         const absolute = new URL(link.getAttribute('href'), wrapperUrl).href;
         // Avoid infinite recursion if it finds itself
         if (absolute !== wrapperUrl) {
-          console.log("Unpacked binary from wrapper:", absolute);
           return absolute;
         }
       }
     }
 
-    console.warn("Could not find binary on wrapper page:", wrapperUrl);
+
     return null;
   } catch (e) {
-    console.error("Error unpacking page:", e);
     return null;
   }
 }
