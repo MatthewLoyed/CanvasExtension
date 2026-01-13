@@ -1,6 +1,12 @@
 let allResources = [];
 let port = null;
 
+const SUPPORTED_DOMAINS = [
+  'instructure.com',
+  'canvas.msstate.edu',
+  'learnx.alueducation.com'
+];
+
 const DOWNLOAD_ICON = `
   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
     <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
@@ -22,39 +28,58 @@ function showLoading() {
   </div>`;
 }
 
+// Helper to suppress runtime errors when pinging a tab that might not have a content script yet
+function safeSendMessage(tabId, message, callback) {
+  chrome.tabs.sendMessage(tabId, message, (response) => {
+    // Explicitly access lastError to effectively "catch" it and prevent the red console error
+    const err = chrome.runtime.lastError;
+    if (err) {
+      // Debug only
+      // console.debug("safeSendMessage caught error (expected during init):", err.message);
+    }
+    if (callback) {
+      callback(err ? null : response);
+    }
+  });
+}
+
 async function ensureContentScript() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab || !tab.url) {
     return;
   }
 
-  const isCanvas = tab.url.includes('instructure.com') ||
-    tab.url.includes('canvas.msstate.edu') ||
-    tab.url.includes('learnx.alueducation.com');
+  const isCanvas = SUPPORTED_DOMAINS.some(domain => tab.url.includes(domain));
 
   if (!isCanvas) return;
 
   showLoading();
 
-  try {
-    await chrome.tabs.sendMessage(tab.id, { action: 'ping' });
-    connectToContentScript();
-  } catch (e) {
-    // Ignore "Could not establish connection" errors
-    chrome.runtime.sendMessage({ action: 'inject_script', tabId: tab.id }, (response) => {
-      if (response && response.success) {
-        setTimeout(connectToContentScript, 150);
-      }
-    });
-  }
+  // Check if content script is already there using the safe wrapper
+  safeSendMessage(tab.id, { action: 'ping' }, (response) => {
+    if (!response) {
+      // Ping failed (no response or error caught), so proper 'lastError' suppression happened inside safeSendMessage.
+      // Now proceed to inject.
+      chrome.runtime.sendMessage({ action: 'inject_script', tabId: tab.id }, (injectRes) => {
+        const err = chrome.runtime.lastError; // Suppress LAST ERROR
+        if (err) return;
+
+        if (injectRes && injectRes.success) {
+          setTimeout(connectToContentScript, 150);
+        }
+      });
+    } else {
+      // Ping succeeded, just connect
+      connectToContentScript();
+    }
+  });
 }
+
 
 function connectToContentScript(retries = 3) {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     const tabId = tabs[0]?.id;
-    if (!tabId) {
-      return;
-    }
+    if (!tabId) return;
 
     try {
       if (port) {
@@ -71,6 +96,11 @@ function connectToContentScript(retries = 3) {
       });
 
       port.onDisconnect.addListener(() => {
+        // --- THE FIX IS HERE ---
+        // We must access chrome.runtime.lastError to suppress the console error
+        const err = chrome.runtime.lastError; 
+        // Optional: console.debug("Port disconnected:", err ? err.message : "Clean disconnect");
+        
         port = null;
         if (retries > 0) {
           setTimeout(() => connectToContentScript(retries - 1), 500);
@@ -294,9 +324,7 @@ async function resolveDownloadUrl(originalUrl) {
 
   // 2. CANVAS API STRATEGY (Strict)
   const fileIdMatch = u.pathname.match(/\/files\/(\d+)/);
-  const isActualCanvas = u.hostname === 'canvas.msstate.edu' ||
-    u.hostname.includes('instructure.com') ||
-    u.hostname.includes('learnx.alueducation.com');
+  const isActualCanvas = SUPPORTED_DOMAINS.some(domain => u.hostname.includes(domain));
 
   if (fileIdMatch && isActualCanvas) {
     const fileId = fileIdMatch[1];
@@ -307,10 +335,10 @@ async function resolveDownloadUrl(originalUrl) {
       if (tab) {
         // Ask Content Script to fetch the API (using user cookies)
         const response = await new Promise((resolve) => {
-          chrome.tabs.sendMessage(tab.id, {
+          safeSendMessage(tab.id, {
             action: 'resolve_canvas_url',
             apiUrl: apiUrl
-          }, (res) => resolve(chrome.runtime.lastError ? null : res));
+          }, (res) => resolve(res));
         });
 
         if (response && response.success && response.url) {

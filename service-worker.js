@@ -1,19 +1,31 @@
 // Service worker placeholder
+const SUPPORTED_DOMAINS = [
+    'instructure.com',
+    'canvas.msstate.edu',
+    'learnx.alueducation.com'
+];
+
 chrome.sidePanel
     .setPanelBehavior({ openPanelOnActionClick: true })
     .catch((error) => { });
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-    if (changeInfo.status === 'complete' && tab.url?.includes('instructure.com')) {
-        // Instead of a blind message, we check if someone is home first
-        try {
-            await chrome.tabs.sendMessage(tabId, { action: 'ping' });
-            // If ping succeeds, then send the refresh
-            chrome.tabs.sendMessage(tabId, { action: 'navigation_refresh' });
-        } catch (e) {
-            // If ping fails, the content script isn't ready. 
-            // We don't need to do anything; the script will talk to us when it loads.
-        }
+    const isCanvas = tab.url && SUPPORTED_DOMAINS.some(domain => tab.url.includes(domain));
+
+    if (changeInfo.status === 'complete' && isCanvas) {
+        // We use a callback with lastError check to silence the "Receiving end does not exist" error
+        chrome.tabs.sendMessage(tabId, { action: 'ping' }, (response) => {
+            if (chrome.runtime.lastError) {
+                // Content script not ready, silence error
+                return;
+            }
+            if (response) {
+                // If ping succeeds, then send the refresh
+                chrome.tabs.sendMessage(tabId, { action: 'navigation_refresh' }, () => {
+                    if (chrome.runtime.lastError) { /* ignore */ }
+                });
+            }
+        });
     }
 });
 

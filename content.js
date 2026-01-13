@@ -9,6 +9,7 @@ let port = null;
 // Config
 const DELAY_MS = 800; // Rate limiting delay
 const TARGET_EXTENSIONS = ['.pdf', '.docx', '.pptx', '.zip', '.xlsx', '.txt', '.doc', '.ppt', '.xls'];
+const TARGET_DOMAINS = ['instructure.com', 'canvas.msstate.edu', 'learnx.alueducation.com'];
 const JUNK_KEYWORDS = ['skip to content', 'history', 'jump to', 'toggle', 'next', 'previous', 'breadcrumbs', 'click here'];
 const FILE_ICON_CLASSES = [
   'icon-pdf', 'icon-ms-word', 'icon-ms-ppt',
@@ -140,8 +141,6 @@ function sendUpdate(extraData = {}) {
 
   if (port) {
     port.postMessage(msg);
-  } else {
-    chrome.runtime.sendMessage(msg).catch(() => { });
   }
 }
 
@@ -204,9 +203,7 @@ chrome.runtime.onConnect.addListener((p) => {
 function transformDownloadUrl(urlStr) {
   try {
     const u = new URL(urlStr);
-    const isCanvas = u.hostname.includes('instructure.com') ||
-      u.hostname.includes('canvas.msstate.edu') ||
-      u.hostname.includes('learnx.alueducation.com');
+    const isCanvas = TARGET_DOMAINS.some(domain => u.hostname.includes(domain));
 
     if (!isCanvas) return { url: urlStr, isExternal: true };
 
