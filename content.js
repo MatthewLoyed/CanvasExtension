@@ -23,6 +23,7 @@ const FILE_ICON_CLASSES = [
 function scrapeRoot(root, sourceUrl, isDeep = false) {
   const links = root.tagName === 'A' ? [root] : root.querySelectorAll('a');
   let foundCount = 0;
+  const courseName = getCourseName(); // Extract once per scrape cycle
 
   links.forEach(link => {
     const href = link.href || link.getAttribute('href') || '';
@@ -49,7 +50,8 @@ function scrapeRoot(root, sourceUrl, isDeep = false) {
           context: isDeep ? `Found in: ${sourceUrl}` : findContext(link),
           type: fileInfo.type,
           source: isDeep ? 'deep' : 'surface',
-          parentPage: sourceUrl
+          parentPage: sourceUrl,
+          courseName: courseName // Add this field
         });
         foundCount++;
       }
@@ -57,6 +59,36 @@ function scrapeRoot(root, sourceUrl, isDeep = false) {
   });
 
   return foundCount;
+}
+
+function getCourseName() {
+  // Strategy 1: Breadcrumbs (Safe & Reliable on Canvas)
+  // Usually: Courses > Course Name > Modules ...
+  try {
+    const crumbs = document.querySelectorAll('#breadcrumbs ul li');
+    if (crumbs && crumbs.length >= 2) {
+      // The second item is usually the Course Title (Index 1)
+      // Index 0 is "Dashboard" or "Courses"
+      const courseCrumb = crumbs[1];
+      const text = courseCrumb.innerText.trim();
+      if (text && text.length < 50) return text;
+    }
+  } catch (e) { }
+
+  // Strategy 2: Page Title (Parsing "Assignment : Course Name")
+  try {
+    const title = document.title;
+    if (title.includes(':')) {
+      const parts = title.split(':');
+      // Usually the last part is "Canvas" or "Institution", second to last might be course?
+      // Actually standard Canvas layout: "Item Name : Course Name : Instructure"
+      if (parts.length >= 2) {
+        return parts[1].trim();
+      }
+    }
+  } catch (e) { }
+
+  return "General";
 }
 
 function detectFile(link, href, text) {

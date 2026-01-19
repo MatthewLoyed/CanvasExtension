@@ -23,7 +23,7 @@ const statusFooter = document.getElementById('status-footer');
 function showLoading() {
   fileListContainer.innerHTML = `
   <div class="message-placeholder">
-    <div class="loader" style="width: 24px; height: 24px; border-width: 3px; margin: 0 auto 1rem;"></div>
+    <div class="loader"></div>
     <p>Scanning Canvas...</p>
   </div>`;
 }
@@ -98,9 +98,9 @@ function connectToContentScript(retries = 3) {
       port.onDisconnect.addListener(() => {
         // --- THE FIX IS HERE ---
         // We must access chrome.runtime.lastError to suppress the console error
-        const err = chrome.runtime.lastError; 
+        const err = chrome.runtime.lastError;
         // Optional: console.debug("Port disconnected:", err ? err.message : "Clean disconnect");
-        
+
         port = null;
         if (retries > 0) {
           setTimeout(() => connectToContentScript(retries - 1), 500);
@@ -224,29 +224,60 @@ class DownloadQueue {
         throw new Error("Could not resolve a valid binary file.");
       }
 
+      // -- SANITIZATION STEP --
+      // We try the "Pretty" name first.
       const safeName = getSafeFilename(item.text, item.type);
-      const safeCourse = getSafeFilename(item.courseName || "General", "").replace(/\./g, '_');
+      const safeCourse = getSafeFilename(item.courseName || "General", ""); // Removed .replace dots hack, handled by getSafeFilename now
+
       const relativePath = `Canvas_Resources/${safeCourse}/${safeName}`;
 
+      // Internal helper to perform the actual download call
+      const attemptDownload = (url, path, isRetry = false) => {
+        chrome.downloads.download({
+          url: url,
+          filename: path,
+          conflictAction: 'uniquify'
+        }, (id) => {
+          const err = chrome.runtime.lastError;
+          if (err) {
+            // -- FALLBACK LOGIC --
+            if (!isRetry) {
+              // If it failed, it might be the filename. Retry with a Safe ID.
+              console.warn("Download failed with pretty name, retrying with fallback...", err.message);
 
+              const cleanExt = (item.type && item.type.startsWith('.')) ? item.type : '.file';
+              const fallbackName = `Canvas_File_${Date.now()}_${Math.floor(Math.random() * 1000)}${cleanExt}`;
+              const fallbackPath = `Canvas_Resources/${safeCourse}/fallback/${fallbackName}`;
 
-      chrome.downloads.download({
-        url: finalUrl,
-        filename: relativePath,
-        conflictAction: 'uniquify'
-      }, (id) => {
-        const err = chrome.runtime.lastError;
-        if (err) {
-          if (btn) setButtonState(btn, 'error', err.message);
-          this.errors++;
-        } else {
-          if (btn) setButtonState(btn, 'success');
-          this.completed++;
-        }
-        this.active--;
-        this.updateUI();
-        setTimeout(() => this.process(), this.delay);
-      });
+              // RECURSIVE RETRY
+              attemptDownload(url, fallbackPath, true);
+            } else {
+              // Double fail
+              if (btn) setButtonState(btn, 'error', "OS System Error"); // Shortened for UI
+              this.errors++;
+              this.active--;
+              this.updateUI();
+              setTimeout(() => this.process(), this.delay);
+            }
+          } else {
+            // SUCCESS
+            if (btn) {
+              setButtonState(btn, 'success');
+              if (isRetry) {
+                // Optionally startle them slightly to let them know it was renamed
+                btn.title = "Saved (Renamed due to OS error)";
+              }
+            }
+            this.completed++;
+            this.active--;
+            this.updateUI();
+            setTimeout(() => this.process(), this.delay);
+          }
+        });
+      };
+
+      // Trigger the first attempt
+      attemptDownload(finalUrl, relativePath, false);
 
     } catch (err) {
       if (btn) setButtonState(btn, 'error', err.message);
@@ -277,39 +308,66 @@ function setButtonState(btn, state, msg = '') {
   if (state === 'queued') {
     btn.innerHTML = '<span style="font-size: 10px; color: var(--text-muted); font-weight: 600;">QUEUED</span>';
     btn.title = "Waiting in queue...";
+    btn.classList.remove('success', 'error');
   } else if (state === 'loading') {
     btn.innerHTML = '<div class="loader" style="width:12px;height:12px;border-width:2px;"></div>';
     btn.title = "Resolving...";
+    btn.classList.remove('success', 'error');
   } else if (state === 'success') {
-    btn.innerHTML = '✅';
-    btn.title = "Downloaded";
-    // Transition back to redownload after 3 seconds
-    setTimeout(() => {
-      btn.innerHTML = DOWNLOAD_ICON;
-      btn.title = 'Redownload';
-    }, 3000);
+    btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+      <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/>
+    </svg>`;
+    btn.title = "Downloaded (Click to download again)";
+    btn.classList.add('success');
+    btn.classList.remove('error');
   } else if (state === 'error') {
     btn.innerHTML = '❌';
     btn.title = msg || "Failed";
+    btn.classList.add('error');
+    btn.classList.remove('success');
   }
 }
 
 function getSafeFilename(text, extension = ".pdf") {
   if (!text) return "download" + extension;
 
-  // Remove illegal characters: \ / : * ? " < > |
-  // Also remove trailing periods and spaces which cause OS errors
-  let clean = text.replace(/[\\/:*?"<>|]/g, '_')
-    .replace(/\.+$/, '')
-    .trim();
+  // 1. Basic Reserve Char Strip (Windows: < > : " / \ | ? *)
+  // Replaces them with underscore
+  let clean = text.replace(/[<>:"/\\|?*]/g, '_');
 
-  // Ensure it ends with the correct extension if one was provided
+  // 2. Control Characters (ASCII 0-31, 127) + Non-breaking spaces (nbsp)
+  // These often sneak in from copy-pasting and cause silent io failures
+  clean = clean.replace(/[\x00-\x1F\x7F\u00A0]/g, '_');
+
+  // 3. Trim whitespace and trailing periods (Windows hates trailing dots)
+  clean = clean.trim().replace(/\.+$/, '');
+
+  // 4. Handle Windows Reserved Names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+  // If the filename matches these (case-insensitive), prepend an underscore
+  const reservedRegex = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
+  if (reservedRegex.test(clean)) {
+    clean = "_" + clean;
+  }
+
+  // 5. Length Truncation
+  // Windows MAX_PATH is 260. We reserve space for the directory structure.
+  // 120 chars is a safe upper bound for the filename itself.
+  if (clean.length > 120) {
+    clean = clean.substring(0, 120).trim();
+  }
+
+  // 6. Ensure Extension
   if (extension) {
     const ext = extension.startsWith('.') ? extension : `.${extension}`;
     // Check if it ALREADY ends with that extension (case-insensitive)
     if (!clean.toLowerCase().endsWith(ext.toLowerCase())) {
       clean += ext;
     }
+  }
+
+  // Final fallback if we stripped everything away
+  if (clean.length === 0 || clean === extension) {
+    return "download" + extension;
   }
 
   return clean;
@@ -460,7 +518,10 @@ function renderList(resources, highlightQuery = '') {
   if (filtered.length === 0) {
     fileListContainer.innerHTML = `
       <div class="message-placeholder">
-          <p>${query ? 'No matching files found.' : 'No files found yet.'}</p>
+          <svg class="empty-state-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"></path>
+          </svg>
+          <p>${query ? 'No matching files found.' : 'Navigate to a specific course page like Modules or Home to start finding files!'}</p>
       </div>`;
     return;
   }
@@ -556,16 +617,16 @@ function hideModal() {
     proModal.classList.remove('closing');
     content.classList.remove('closing');
 
+    // Reset visibility logic...
     if (modalForm) modalForm.style.display = 'block';
     if (modalSuccess) modalSuccess.style.display = 'none';
     if (waitlistEmail) waitlistEmail.value = '';
 
-    // Reset visibility of header and text
     const modalHeader = document.querySelector('.modal-header');
     const modalBodyPs = document.querySelectorAll('.modal-body > p');
     if (modalHeader) modalHeader.style.display = 'block';
-    modalBodyPs.forEach(p => p.style.display = 'block');
-  }, 200);
+    if (modalBodyPs) modalBodyPs.forEach(p => p.style.display = 'block');
+  }, 200); // Matches CSS animation duration
 }
 
 if (btnDeepScan) btnDeepScan.addEventListener('click', showModal);
@@ -627,6 +688,104 @@ if (btnNotifyMe) {
       alert('There was a problem joining the waitlist. Please try again.');
       btnNotifyMe.innerText = originalText;
       btnNotifyMe.disabled = false;
+    }
+  });
+}
+
+// --- Feedback / Support Logic ---
+const btnFeedback = document.getElementById('btn-feedback');
+const feedbackModal = document.getElementById('feedback-modal');
+const feedbackClose = document.getElementById('feedback-close');
+const btnSendFeedback = document.getElementById('btn-send-feedback');
+const feedbackType = document.getElementById('feedback-type');
+const feedbackMessage = document.getElementById('feedback-message');
+const feedbackEmail = document.getElementById('feedback-email');
+const feedbackFormContainer = document.getElementById('feedback-form-container');
+const feedbackSuccess = document.getElementById('feedback-success');
+
+function showFeedbackModal() {
+  if (feedbackModal) {
+    feedbackModal.style.display = 'flex';
+    // Pre-fill email if they already joined waitlist
+    if (feedbackEmail && waitlistEmail && waitlistEmail.value) {
+      feedbackEmail.value = waitlistEmail.value;
+    }
+  }
+}
+
+function hideFeedbackModal() {
+  if (feedbackModal) {
+    const content = feedbackModal.querySelector('.modal-content');
+    feedbackModal.classList.add('closing');
+    if (content) content.classList.add('closing');
+
+    setTimeout(() => {
+      feedbackModal.style.display = 'none';
+      feedbackModal.classList.remove('closing');
+      if (content) content.classList.remove('closing');
+
+      if (feedbackFormContainer) feedbackFormContainer.style.display = 'block';
+      if (feedbackSuccess) feedbackSuccess.style.display = 'none';
+      if (btnSendFeedback) {
+        btnSendFeedback.innerText = "Send Message";
+        btnSendFeedback.disabled = false;
+      }
+    }, 200);
+  }
+}
+
+if (btnFeedback) btnFeedback.addEventListener('click', showFeedbackModal);
+if (feedbackClose) feedbackClose.addEventListener('click', hideFeedbackModal);
+if (feedbackModal) {
+  feedbackModal.addEventListener('click', (e) => {
+    if (e.target === feedbackModal) hideFeedbackModal();
+  });
+}
+
+if (btnSendFeedback) {
+  btnSendFeedback.addEventListener('click', async () => {
+    const message = feedbackMessage.value.trim();
+    if (!message) {
+      alert("Please enter a message.");
+      return;
+    }
+
+    const type = feedbackType.value;
+    const email = feedbackEmail.value || "Anonymous";
+
+    // Auto-collect tech info
+    const version = chrome.runtime.getManifest().version;
+    const techInfo = `\n\n-- Tech Info --\nVersion: ${version}\nUser-Agent: ${navigator.userAgent}`;
+
+    const finalBody = `[${type}]\n${message}${techInfo}`;
+
+    // UI Loading
+    const originalText = btnSendFeedback.innerText;
+    btnSendFeedback.innerText = "Sending...";
+    btnSendFeedback.disabled = true;
+
+    try {
+      const response = await fetch(FORMSPREE_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email,
+          message: finalBody,
+          _subject: `Extension Feedback: ${type}`
+        })
+      });
+
+      if (response.ok) {
+        feedbackFormContainer.style.display = 'none';
+        feedbackSuccess.style.display = 'block';
+        feedbackMessage.value = ''; // clear for next time
+      } else {
+        throw new Error('Submission failed');
+      }
+    } catch (err) {
+      alert("Could not send feedback. Please try again.");
+      btnSendFeedback.innerText = originalText;
+      btnSendFeedback.disabled = false;
     }
   });
 }

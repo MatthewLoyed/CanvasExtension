@@ -15,11 +15,15 @@ This extension injects a sidebar that scans the current course or module and int
 * **Download Queue:** Manages concurrency to prevent browser throttling during bulk operations.
 * **Sanitized Filenames:** automatically renames files to be file-system safe.
 
+### 💬 Feedback & Support
+Found a bug or have a suggestion?
+Use the **Feedback Button** (💬) inside the extension side panel to send a message directly to the developer.
+
+---
 ### 🏗 Technical Stack
 * **Manifest V3**
 * **Vanilla JavaScript** (No heavy frameworks)
 * **Chrome Downloads API** & **Tabs API**
-* **Custom Logging System:** Dev-mode toggle for granular debugging of the resolution chain.
 
 ---
 *Disclaimer: This is a personal project intended for educational use and easier file management.*

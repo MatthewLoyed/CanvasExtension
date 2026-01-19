@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Canvas Resource Sidekick: Bulk File Downloader",
-  "version": "1.0.1",
-  "description": "Scrapes and lists course resources from Canvas pages. Works with PDFs, Excel sheets, Word docs, PowerPoints, and more!",
+  "name": "Canvas LMS Bulk Downloader & Resource Saver",
+  "version": "1.0.3",
+  "homepage_url": "https://github.com/Starttoaster/CanvasExtension",
+  "description": "Master your Canvas materials. Effortlessly bulk download slides, PDFs & docs with smart organization. Your central study hub.",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
