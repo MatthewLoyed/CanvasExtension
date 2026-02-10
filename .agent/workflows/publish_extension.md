@@ -35,15 +35,11 @@ This workflow automates the process of packaging the extension and preparing it 
    ```
 
 5. **Extract and Test**
-   The agent will extract the zip to an `Unpacked` folder for verification.
-   // turbo
-   ```powershell
-   powershell -Command "Write-Host 'Extracting latest zip...'; $LatestZip = Get-ChildItem ..\Builds-4-CanvasExtension\*.zip | Sort-Object LastWriteTime -Descending | Select-Object -First 1; $Dest = '..\Builds-4-CanvasExtension\Unpacked'; if (Test-Path $Dest) { Remove-Item $Dest -Recurse -Force }; Expand-Archive -Path $LatestZip.FullName -DestinationPath $Dest; Write-Host 'Extracted to:' $Dest"
-   ```
+   The build script has automatically extracted the extension to the `Unpacked` folder.
    > [!TIP]
    > 1. Go to `chrome://extensions`
    > 2. Enable **Developer mode**
-   > 3. Click **Load unpacked**
+   > 3. Click **Load unpacked** (or verify the existing one is reloaded)
    > 4. Select the `..\Builds-4-CanvasExtension\Unpacked` folder
    > 5. Verify the extension loads and functions correctly.
 

@@ -587,110 +587,8 @@ function renderList(resources, highlightQuery = '') {
   renderGroup('Found in Modules/Pages', deepFiles);
 }
 
-// --- Fake Door / Modal Logic ---
-const btnDeepScan = document.getElementById('btn-deep-scan');
-const btnBulkDownload = document.getElementById('btn-bulk-download');
-const proModal = document.getElementById('pro-modal');
-const modalClose = document.getElementById('modal-close');
-const btnNotifyMe = document.getElementById('btn-notify-me');
-const waitlistEmail = document.getElementById('waitlist-email');
-const modalForm = document.getElementById('modal-form');
-const modalSuccess = document.getElementById('modal-success');
-
-function showModal() {
-  if (proModal) {
-    proModal.classList.remove('closing');
-    proModal.querySelector('.modal-content').classList.remove('closing');
-    proModal.style.display = 'flex';
-  }
-}
-
-function hideModal() {
-  if (!proModal) return;
-
-  const content = proModal.querySelector('.modal-content');
-  proModal.classList.add('closing');
-  content.classList.add('closing');
-
-  setTimeout(() => {
-    proModal.style.display = 'none';
-    proModal.classList.remove('closing');
-    content.classList.remove('closing');
-
-    // Reset visibility logic...
-    if (modalForm) modalForm.style.display = 'block';
-    if (modalSuccess) modalSuccess.style.display = 'none';
-    if (waitlistEmail) waitlistEmail.value = '';
-
-    const modalHeader = document.querySelector('.modal-header');
-    const modalBodyPs = document.querySelectorAll('.modal-body > p');
-    if (modalHeader) modalHeader.style.display = 'block';
-    if (modalBodyPs) modalBodyPs.forEach(p => p.style.display = 'block');
-  }, 200); // Matches CSS animation duration
-}
-
-if (btnDeepScan) btnDeepScan.addEventListener('click', showModal);
-if (modalClose) modalClose.addEventListener('click', hideModal);
-
-if (proModal) {
-  proModal.addEventListener('click', (e) => {
-    if (e.target === proModal) {
-      hideModal();
-    }
-  });
-}
-
-const FORMSPREE_ENDPOINT = 'https://formspree.io/f/mbddrqao';
-
-if (btnNotifyMe) {
-  btnNotifyMe.addEventListener('click', async () => {
-    const email = waitlistEmail.value;
-    if (!email || !email.includes('@')) {
-      alert('Please enter a valid email address.');
-      return;
-    }
-
-    // UI Loading State
-    const originalText = btnNotifyMe.innerText;
-    btnNotifyMe.innerText = 'Sending...';
-    btnNotifyMe.disabled = true;
-
-    try {
-      const response = await fetch(FORMSPREE_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ email: email })
-      });
-
-      if (response.ok) {
-        modalForm.style.display = 'none';
-        modalSuccess.style.display = 'block';
-
-        // Hide the "Coming Soon" header and intro text
-        const modalHeader = document.querySelector('.modal-header');
-        const modalBodyPs = document.querySelectorAll('.modal-body > p');
-        if (modalHeader) modalHeader.style.display = 'none';
-        modalBodyPs.forEach(p => p.style.display = 'none');
-
-        // Optional: clear input just in case
-        waitlistEmail.value = '';
-      } else {
-        const data = await response.json();
-        if (Object.hasOwn(data, 'errors')) {
-          alert("Error: " + data.errors.map(error => error.message).join(", "));
-        } else {
-          throw new Error('Submission failed');
-        }
-      }
-    } catch (err) {
-      alert('There was a problem joining the waitlist. Please try again.');
-      btnNotifyMe.innerText = originalText;
-      btnNotifyMe.disabled = false;
-    }
-  });
-}
+// --- Deep Scan / Fake Door Logic Removed ---
+// (We will re-implement this when the actual feature is ready)
 
 // --- Feedback / Support Logic ---
 const btnFeedback = document.getElementById('btn-feedback');
@@ -791,6 +689,7 @@ if (btnSendFeedback) {
 }
 
 // --- Bulk Download Logic ---
+const btnBulkDownload = document.getElementById('btn-bulk-download');
 if (btnBulkDownload) {
   btnBulkDownload.addEventListener('click', () => {
     if (!allResources || allResources.length === 0) {

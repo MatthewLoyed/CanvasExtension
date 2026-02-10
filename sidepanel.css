@@ -286,6 +286,29 @@ footer {
   background: var(--card-bg);
   border-top: 1px solid var(--border-color);
   box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.05);
+  margin-top: auto;
+  /* Ensures it stays at bottom if content is short */
+}
+
+.footer-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.btn-text-only {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0.25rem;
+  transition: color 0.2s;
+}
+
+.btn-text-only:hover {
+  color: var(--primary);
 }
 
 .footer-buttons {
@@ -295,7 +318,7 @@ footer {
 
 .btn-primary,
 .btn-secondary {
-  flex: 1;
+  width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -314,7 +337,9 @@ footer {
   background-color: var(--primary);
   background-image: linear-gradient(to bottom right, var(--primary), #601015);
   color: white;
-  box-shadow: 0 2px 4px rgba(125, 24, 30, 0.25);
+  box-shadow: 0 4px 6px -1px rgba(125, 24, 30, 0.3), 0 2px 4px -1px rgba(125, 24, 30, 0.15);
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 .btn-primary:hover {

@@ -4,7 +4,65 @@ param (
 
 # Configuration
 $ManifestPath = Join-Path $PSScriptRoot "manifest.json"
-$TargetDir = Join-Path $PSScriptRoot "..\Builds-4-CanvasExtension"
+$TargetRoot = Join-Path $PSScriptRoot "..\Builds-4-CanvasExtension"
+$HistoryDir = Join-Path $TargetRoot "History"
+$UnpackedDir = Join-Path $TargetRoot "Unpacked"
+
+# Ensure Target Root Exists
+if (-not (Test-Path $TargetRoot)) {
+    New-Item -ItemType Directory -Path $TargetRoot -Force | Out-Null
+}
+
+# --- ARCHIVAL PROCESS ---
+Write-Host "Starting Archival Process..."
+
+# 1. Create History Directory
+if (-not (Test-Path $HistoryDir)) {
+    New-Item -ItemType Directory -Path $HistoryDir -Force | Out-Null
+    Write-Host "  Created History directory."
+}
+
+# 2. Archive Existing Zips
+$ExistingZips = Get-ChildItem -Path $TargetRoot -Filter "*.zip"
+foreach ($Zip in $ExistingZips) {
+    Move-Item -Path $Zip.FullName -Destination $HistoryDir -Force
+    Write-Host "  Archived Zip: $($Zip.Name)"
+}
+
+# 2a. Archive Legacy/Other Directories
+# Moves any folder that isn't 'History' or 'Unpacked' into History
+$LegacyFolders = Get-ChildItem -Path $TargetRoot -Directory | Where-Object { 
+    $_.Name -ne "History" -and $_.Name -ne "Unpacked" 
+}
+foreach ($Folder in $LegacyFolders) {
+    Move-Item -Path $Folder.FullName -Destination $HistoryDir -Force
+    Write-Host "  Archived Folder: $($Folder.Name)"
+}
+
+# 3. Archive Existing Unpacked Folder
+if (Test-Path $UnpackedDir) {
+    # Try to determine version of the OLD unpacked folder
+    $OldManifestPath = Join-Path $UnpackedDir "manifest.json"
+    $OldVersion = "unknown"
+    if (Test-Path $OldManifestPath) {
+        try {
+            $OldManifest = Get-Content $OldManifestPath -Raw | ConvertFrom-Json
+            $OldVersion = $OldManifest.version
+        } catch {
+            Write-Warning "  Could not read version from existing Unpacked folder."
+        }
+    }
+    
+    $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    $ArchiveName = "Unpacked_v$($OldVersion)_$($Timestamp)"
+    $ArchivePath = Join-Path $HistoryDir $ArchiveName
+    
+    Move-Item -Path $UnpackedDir -Destination $ArchivePath -Force
+    Write-Host "  Archived Unpacked: $ArchiveName"
+}
+
+# --- BUILD PROCESS ---
+Write-Host "`nStarting Build Process..."
 
 # Read Manifest
 if (-not (Test-Path $ManifestPath)) {
@@ -16,26 +74,14 @@ $Manifest = Get-Content $ManifestPath -Raw | ConvertFrom-Json
 $Version = $Manifest.version
 $Name = $Manifest.name
 
-# Sanitize Name (Replace non-alphanumeric characters with underscores)
+# Sanitize Name
 $SanitizedName = $Name -replace '[^a-zA-Z0-9]', '_'
-$SanitizedName = $SanitizedName -replace '_+', '_' # Remove duplicate underscores
-$SanitizedName = $SanitizedName -replace '^_|_$', '' # Remove leading/trailing underscores
+$SanitizedName = $SanitizedName -replace '_+', '_'
+$SanitizedName = $SanitizedName -replace '^_|_$', ''
 
 # Construct Zip Name
 $ZipName = "{0}_v{1}_{2}.zip" -f $SanitizedName, $Version, $Status
-$ZipPath = Join-Path $TargetDir $ZipName
-
-# Create Output Directory
-if (-not (Test-Path $TargetDir)) {
-    New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
-    Write-Host "Created directory: $TargetDir"
-}
-
-# Remove existing zip if it exists
-if (Test-Path $ZipPath) {
-    Remove-Item $ZipPath -Force
-    Write-Host "Removed existing file: $ZipPath"
-}
+$ZipPath = Join-Path $TargetRoot $ZipName
 
 # Define Exclusions
 $Exclude = @(
@@ -44,7 +90,7 @@ $Exclude = @(
     ".agent",
     "tests",
     "node_modules",
-    "*.md", # README.md, STORE_LISTING.md, etc.
+    "*.md",
     "*.zip",
     "build_extension.ps1",
     "reviewer_note.txt",
@@ -52,27 +98,28 @@ $Exclude = @(
     ".DS_Store"
 )
 
-# Zip Files
-# We need to selectively pipe items to Compress-Archive to handle exclusions properly
-# Get-ChildItem -Exclude is sometimes finicky with recursive directories in PowerShell < 7, 
-# but Compress-Archive takes a list of files.
-
-Write-Host "Packaging extension..."
+Write-Host "  Packaging extension..."
 Write-Host "  Name: $SanitizedName"
 Write-Host "  Version: $Version"
-Write-Host "  Status: $Status"
 Write-Host "  Output: $ZipPath"
 
-# Simple approach: Get items in root, filter against exclusions, then zip
+# Zip Files
 $ItemsToZip = Get-ChildItem -Path $PSScriptRoot -Exclude $Exclude | Where-Object { 
     $_.Name -notin $Exclude 
 }
 
 Compress-Archive -Path $ItemsToZip.FullName -DestinationPath $ZipPath -CompressionLevel Optimal
 
-if (Test-Path $ZipPath) {
-    Write-Host "Success! Created $ZipName"
-} else {
+if (-not (Test-Path $ZipPath)) {
     Write-Error "Failed to create zip file."
     exit 1
 }
+Write-Host "  Success! Created zip."
+
+# --- EXTRACTION PROCESS ---
+Write-Host "`nStarting Extraction Process..."
+
+# Extract to Unpacked
+Expand-Archive -Path $ZipPath -DestinationPath $UnpackedDir -Force
+Write-Host "  Extracted to: $UnpackedDir"
+Write-Host "  Ready for 'Load Unpacked' testing!"
