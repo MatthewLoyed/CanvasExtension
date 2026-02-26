@@ -78,7 +78,7 @@
               <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/>
               <path d="M11 2a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9.5a.5.5 0 0 1 0-1H11V3H9.5a.5.5 0 0 1 0-1H11z"/>
             </svg>
-            Open Full Panel
+            <span style="display:inline-block; margin-top:2px;">Open Full Panel</span>
           </button>
         </div>
       </div>
@@ -90,17 +90,25 @@
     function injectToolbar() {
         const toolbar = createToolbar();
 
-        // Try to inject near the Canvas breadcrumbs / header area
+        // 1. Try to find a right-aligned Canvas header container
+        const rightActionContainer = document.querySelector('.header-bar-right, .ic-Action-header__Secondary, .page-action-list');
         const breadcrumbs = document.getElementById('breadcrumbs');
-        const headerBar = document.querySelector('.ic-app-nav-toggle-and-main-content');
         const contentArea = document.getElementById('content');
 
-        if (breadcrumbs && breadcrumbs.parentNode) {
-            breadcrumbs.parentNode.insertBefore(toolbar, breadcrumbs.nextSibling);
+        if (rightActionContainer) {
+            // Append to the end of right actions
+            rightActionContainer.appendChild(toolbar);
+        } else if (breadcrumbs && breadcrumbs.parentNode) {
+            // Check if the parent is a header bar (often flex)
+            const headerActions = breadcrumbs.closest('.ic-app-nav-toggle-and-main-content, .header-bar');
+            if (headerActions) {
+                // Insert at the end so margin-left: auto pushes it to the right
+                headerActions.appendChild(toolbar);
+            } else {
+                breadcrumbs.parentNode.appendChild(toolbar);
+            }
         } else if (contentArea) {
             contentArea.insertBefore(toolbar, contentArea.firstChild);
-        } else if (headerBar) {
-            headerBar.insertBefore(toolbar, headerBar.firstChild);
         } else {
             document.body.insertBefore(toolbar, document.body.firstChild);
         }
