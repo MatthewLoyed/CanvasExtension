@@ -112,7 +112,7 @@ class DownloadQueue {
         }
     }
 
-    _startNext() {
+    async _startNext() {
         this.active++;
         const item = this.queue.shift();
 
@@ -121,7 +121,16 @@ class DownloadQueue {
 
         const safeName = getSafeFilename(item.filename, item.type);
         const safeCourse = getSafeFilename(item.courseName || "General", "");
-        const relativePath = `Canvas_Resources/${safeCourse}/${safeName}`;
+
+        let useFolder = false;
+        try {
+            const res = await new Promise(resolve => chrome.storage.sync.get(['useCanvasResourcesFolder'], resolve));
+            useFolder = res.useCanvasResourcesFolder || false;
+        } catch (err) {
+            console.error(err);
+        }
+
+        const relativePath = useFolder ? `Canvas_Resources/${safeCourse}/${safeName}` : safeName;
 
         const attemptDownload = (url, path, isRetry = false) => {
             chrome.downloads.download({
@@ -135,7 +144,7 @@ class DownloadQueue {
                         // Retry with fallback filename
                         const cleanExt = (item.type && item.type.startsWith('.')) ? item.type : '.file';
                         const fallbackName = `Canvas_File_${Date.now()}_${Math.floor(Math.random() * 1000)}${cleanExt}`;
-                        const fallbackPath = `Canvas_Resources/${safeCourse}/fallback/${fallbackName}`;
+                        const fallbackPath = useFolder ? `Canvas_Resources/${safeCourse}/fallback/${fallbackName}` : `fallback/${fallbackName}`;
                         attemptDownload(url, fallbackPath, true);
                     } else {
                         // Double fail
@@ -183,8 +192,12 @@ class DownloadQueue {
         chrome.runtime.sendMessage(msg).catch(() => { });
 
         if (isDone) {
-            // Auto-reset after a delay
-            setTimeout(() => this.reset(), 5000);
+            // Auto-reset after a delay, but check if still idle
+            setTimeout(() => {
+                if (this.queue.length === 0 && this.active === 0) {
+                    this.reset();
+                }
+            }, 5000);
         }
     }
 

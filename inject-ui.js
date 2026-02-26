@@ -46,20 +46,36 @@
 
         toolbar.innerHTML = `
       <div class="cdl-toolbar-inner">
-        <button id="cdl-download-btn" class="cdl-download-btn" title="Download files from this page">
-          <svg class="cdl-icon" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
-            <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
-          </svg>
-          <span id="cdl-btn-text">Download</span>
-          <span id="cdl-badge" class="cdl-badge" style="display:none;">0</span>
-          <svg class="cdl-chevron" id="cdl-chevron" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-            <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
-          </svg>
-        </button>
+        <div class="cdl-button-group" id="cdl-button-group">
+          <button id="cdl-main-btn" class="cdl-main-btn" title="Download all files found on this page">
+            <div class="cdl-btn-content" id="cdl-main-text">
+              <svg class="cdl-main-icon" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M8 1a.5.5 0 0 1 .5.5v10.793l3.146-3.147a.5.5 0 0 1 .708.708l-4 4a.5.5 0 0 1-.708 0l-4-4a.5.5 0 0 1 .708-.708L7.5 12.293V1.5A.5.5 0 0 1 8 1z"/>
+              </svg>
+              <span class="cdl-main-title">Download All</span>
+              <span id="cdl-file-count" class="cdl-file-count-badge">(0 Files)</span>
+            </div>
+            
+            <div class="cdl-loading-bar-container">
+              <div class="cdl-loading-bar-fill" id="cdl-loading-bar"></div>
+            </div>
+
+            <div class="cdl-success-state" id="cdl-success-state">
+              <span>Downloaded!</span>
+              <svg class="cdl-success-icon" viewBox="0 0 16 16" fill="currentColor">
+                <path fill-rule="evenodd" d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/>
+              </svg>
+            </div>
+          </button>
+          <button id="cdl-toggle-btn" class="cdl-toggle-btn" title="View individual files">
+            <svg class="cdl-chevron" id="cdl-chevron" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
+            </svg>
+          </button>
+        </div>
       </div>
-      <div id="cdl-dropdown" class="cdl-dropdown" style="display:none;">
-        <div class="cdl-dropdown-header">
+      <div id="cdl-dropdown" class="cdl-dropdown">
+        <div class="cdl-dropdown-header" style="display:none;">
           <button id="cdl-download-all-btn" class="cdl-download-all-btn">
             <svg class="cdl-icon-sm" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
               <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
@@ -92,11 +108,17 @@
 
         // Use the breadcrumbs as the primary anchor. This is the most consistent 
         // element across all Canvas pages (Syllabus, Modules, Assignments, etc.)
+        const collapseAllBtn = document.getElementById('expand_collapse_all') || document.querySelector('.collapse_all_buttons') || document.querySelector('button[title="Collapse All"]');
+        const headerBarRight = document.querySelector('.header-bar-right');
         const breadcrumbs = document.getElementById('breadcrumbs');
         const headerBar = document.querySelector('.ic-app-nav-toggle-and-main-content');
         const contentArea = document.getElementById('content');
 
-        if (breadcrumbs && breadcrumbs.parentNode) {
+        if (collapseAllBtn && collapseAllBtn.parentNode) {
+            collapseAllBtn.parentNode.insertBefore(toolbar, collapseAllBtn);
+        } else if (headerBarRight) {
+            headerBarRight.insertBefore(toolbar, headerBarRight.firstChild);
+        } else if (breadcrumbs && breadcrumbs.parentNode) {
             breadcrumbs.parentNode.insertBefore(toolbar, breadcrumbs.nextSibling);
         } else if (contentArea) {
             contentArea.insertBefore(toolbar, contentArea.firstChild);
@@ -114,20 +136,32 @@
     // Event Binding
     // ============================================================
     function bindEvents() {
-        const downloadBtn = document.getElementById('cdl-download-btn');
+        const mainBtn = document.getElementById('cdl-main-btn');
+        const toggleBtn = document.getElementById('cdl-toggle-btn');
         const downloadAllBtn = document.getElementById('cdl-download-all-btn');
         const openPanelBtn = document.getElementById('cdl-open-panel-btn');
         const dropdown = document.getElementById('cdl-dropdown');
 
-        // Toggle dropdown
-        downloadBtn.addEventListener('click', (e) => {
+        // Main button: Instantly download all
+        mainBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (currentFiles.length === 0 || isDownloading) return;
+            downloadAll();
+            // Optional: close dropdown if it was open
+            isDropdownOpen = false;
+            dropdown.classList.remove('cdl-dropdown-open');
+            document.getElementById('cdl-chevron').classList.remove('cdl-chevron-open');
+        });
+
+        // Toggle button: View file list
+        toggleBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             isDropdownOpen = !isDropdownOpen;
-            dropdown.style.display = isDropdownOpen ? 'block' : 'none';
+            dropdown.classList.toggle('cdl-dropdown-open', isDropdownOpen);
             document.getElementById('cdl-chevron').classList.toggle('cdl-chevron-open', isDropdownOpen);
         });
 
-        // Download All
+        // Hidden "Download All" inside dropdown (optional backup)
         downloadAllBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             if (currentFiles.length === 0 || isDownloading) return;
@@ -145,7 +179,7 @@
             const toolbar = document.getElementById('cdl-toolbar');
             if (toolbar && !toolbar.contains(e.target) && isDropdownOpen) {
                 isDropdownOpen = false;
-                dropdown.style.display = 'none';
+                dropdown.classList.remove('cdl-dropdown-open');
                 document.getElementById('cdl-chevron').classList.remove('cdl-chevron-open');
             }
         });
@@ -154,35 +188,38 @@
     // ============================================================
     // File List Rendering
     // ============================================================
+    function getSafeDisplayName(text, extension = ".pdf") {
+        if (!text) return "download" + extension;
+        let clean = text.replace(/[<>:"/\\|?*]/g, '_');
+        clean = clean.replace(/[\x00-\x1F\x7F\u00A0]/g, '_');
+        clean = clean.trim().replace(/\.+$/, '');
+        if (clean.length > 120) clean = clean.substring(0, 120).trim();
+        if (extension) {
+            const ext = extension.startsWith('.') ? extension : `.${extension}`;
+            if (!clean.toLowerCase().endsWith(ext.toLowerCase())) clean += ext;
+        }
+        if (clean.length === 0 || clean === extension) return "download" + extension;
+        return clean;
+    }
+
     function renderFileList() {
         const fileList = document.getElementById('cdl-file-list');
-        const badge = document.getElementById('cdl-badge');
-        const downloadAllText = document.getElementById('cdl-download-all-text');
+        const countBadge = document.getElementById('cdl-file-count');
 
-        if (!fileList) return;
+        if (!fileList || !countBadge) return;
 
         const count = currentFiles.length;
 
-        // Update badge
-        if (count > 0) {
-            badge.textContent = count;
-            badge.style.display = 'inline-flex';
-        } else {
-            badge.style.display = 'none';
-        }
+        // Update badge text
+        countBadge.textContent = `(${count} File${count === 1 ? '' : 's'})`;
 
-        // Update download all text
-        downloadAllText.textContent = `Download All (${count} files)`;
-
-        // Hide toolbar entirely if no files
+        // Handle visibility
         const toolbar = document.getElementById('cdl-toolbar');
         if (toolbar) {
-            toolbar.style.display = count > 0 ? 'block' : 'none';
+            toolbar.style.display = count > 0 ? 'inline-flex' : 'none';
         }
 
-        // Render file items
         fileList.innerHTML = '';
-
         if (count === 0) {
             fileList.innerHTML = '<div class="cdl-empty">No downloadable files found on this page.</div>';
             return;
@@ -194,15 +231,16 @@
             item.setAttribute('data-href', file.href);
 
             const ext = (file.type || 'file').replace('.', '').toUpperCase();
-            const displayName = file.text || 'Unnamed File';
+            const displayName = getSafeDisplayName(file.text, file.type);
+            const extClass = `cdl-badge-${ext.toLowerCase()}`;
 
             item.innerHTML = `
         <div class="cdl-file-info">
-          <span class="cdl-file-badge">${ext}</span>
-          <span class="cdl-file-name" title="${displayName}">${displayName}</span>
+          <span class="cdl-file-badge ${extClass}">${ext}</span>
+          <span class="cdl-file-name" title="${file.text}">${displayName}</span>
         </div>
         <button class="cdl-file-download-btn" data-index="${index}" title="Download this file">
-          <svg class="cdl-icon-sm" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
             <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
             <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
           </svg>
@@ -220,18 +258,84 @@
     }
 
     // ============================================================
+    // Inline Button Injection
+    // ============================================================
+    function injectInlineButtons() {
+        const links = document.querySelectorAll('a[data-cdl-link="true"]');
+        const courseName = getCourseNameFromPage();
+
+        links.forEach(link => {
+            // Avoid double-injection
+            if (link.nextElementSibling && link.nextElementSibling.classList.contains('cdl-inline-btn-container')) return;
+
+            const href = link.getAttribute('data-cdl-href');
+            const text = link.getAttribute('data-cdl-text');
+            const type = link.getAttribute('data-cdl-type');
+
+            const container = document.createElement('span');
+            container.className = 'cdl-inline-btn-container';
+            container.innerHTML = `
+        <button class="cdl-inline-btn" title="Download this file with Canvas Downloader">
+          <svg viewBox="0 0 16 16" fill="currentColor">
+            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+            <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+          </svg>
+          <div class="cdl-inline-spinner"></div>
+          <svg class="cdl-inline-success-icon" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/>
+          </svg>
+        </button>
+      `;
+
+            container.querySelector('.cdl-inline-btn').addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const btn = e.currentTarget;
+                if (btn.classList.contains('is-loading')) return;
+
+                btn.classList.add('is-loading');
+
+                const file = { href, text, type, courseName };
+                sendToContentScript({
+                    action: 'resolve_and_download',
+                    file: file
+                }, (response) => {
+                    if (!response || !response.success) {
+                        btn.classList.remove('is-loading');
+                        btn.classList.add('is-error');
+                        setTimeout(() => btn.classList.remove('is-error'), 2000);
+                    }
+                    // Status will be updated via chrome.runtime.onMessage if we implement mapping
+                });
+            });
+
+            // Insert after the link
+            link.insertAdjacentElement('afterend', container);
+        });
+    }
+
+    function getCourseNameFromPage() {
+        const crumbs = document.querySelectorAll('#breadcrumbs ul li');
+        if (crumbs && crumbs.length >= 2) {
+            return crumbs[1].innerText.trim();
+        }
+        return "General";
+    }
+
+    // ============================================================
     // Download Actions
     // ============================================================
     function downloadAll() {
         if (currentFiles.length === 0) return;
 
         isDownloading = true;
-        const downloadAllBtn = document.getElementById('cdl-download-all-btn');
-        const downloadAllText = document.getElementById('cdl-download-all-text');
-        const progressText = document.getElementById('cdl-progress-text');
+        const btnGroup = document.getElementById('cdl-button-group');
+        const progressBar = document.getElementById('cdl-loading-bar');
 
-        downloadAllBtn.disabled = true;
-        downloadAllText.textContent = 'Resolving URLs...';
+        // Enter loading state
+        btnGroup.classList.add('is-loading');
+        progressBar.style.width = '0%';
 
         // Mark all file items as queued
         document.querySelectorAll('.cdl-file-item').forEach(item => {
@@ -239,19 +343,17 @@
         });
 
         // Send batch to content.js for URL resolution → then service worker for download
-        // Use chrome.runtime.sendMessage which routes to content script via the tab
         sendToContentScript({
             action: 'resolve_and_download_batch',
             files: currentFiles
         }, (response) => {
             if (response && response.success) {
-                downloadAllText.textContent = `Downloading...`;
-                progressText.style.display = 'inline';
-                progressText.textContent = `(0/${currentFiles.length})`;
+                // Initial progress update
+                progressBar.style.width = '5%';
             } else {
-                downloadAllText.textContent = 'Download All';
-                downloadAllBtn.disabled = false;
                 isDownloading = false;
+                btnGroup.classList.remove('is-loading');
+                alert('Could not start batch download.');
             }
         });
     }
@@ -344,29 +446,48 @@
             if (item) {
                 setFileItemStatus(item, msg.status);
             }
+
+            // Also update inline buttons
+            const inlineBtn = document.querySelector(`a[data-cdl-href="${CSS.escape(msg.href)}"]`)?.nextElementSibling?.querySelector('.cdl-inline-btn');
+            if (inlineBtn) {
+                inlineBtn.classList.remove('is-loading', 'is-success', 'is-error');
+                if (msg.status === 'loading' || msg.status === 'queued') {
+                    inlineBtn.classList.add('is-loading');
+                } else if (msg.status === 'success') {
+                    inlineBtn.classList.add('is-success');
+                    setTimeout(() => inlineBtn.classList.remove('is-success'), 3000);
+                } else if (msg.status === 'error') {
+                    inlineBtn.classList.add('is-error');
+                    setTimeout(() => inlineBtn.classList.remove('is-error'), 3000);
+                }
+            }
         }
 
         // Overall progress update
         if (msg.action === 'download_progress') {
-            const downloadAllText = document.getElementById('cdl-download-all-text');
-            const progressText = document.getElementById('cdl-progress-text');
-            const downloadAllBtn = document.getElementById('cdl-download-all-btn');
+            if (!isDownloading) return; // Only process if toolbar-initiated download is active
 
-            if (downloadAllText && progressText) {
+            const btnGroup = document.getElementById('cdl-button-group');
+            const progressBar = document.getElementById('cdl-loading-bar');
+            const countBadge = document.getElementById('cdl-file-count');
+
+            if (btnGroup && progressBar) {
                 if (msg.done) {
-                    downloadAllText.textContent = '✓ Complete!';
-                    progressText.style.display = 'none';
-                    if (downloadAllBtn) downloadAllBtn.disabled = false;
+                    progressBar.style.width = '100%';
+                    btnGroup.classList.remove('is-loading');
+                    btnGroup.classList.add('is-success');
                     isDownloading = false;
 
-                    // Reset after delay
+                    // Reset after viewing success state for 3 seconds
                     setTimeout(() => {
-                        downloadAllText.textContent = `Download All (${currentFiles.length} files)`;
-                    }, 4000);
+                        btnGroup.classList.remove('is-success');
+                        progressBar.style.width = '0%';
+                        if (countBadge) countBadge.textContent = `(${currentFiles.length} File${currentFiles.length === 1 ? '' : 's'})`;
+                    }, 3000);
                 } else {
-                    downloadAllText.textContent = 'Downloading...';
-                    progressText.style.display = 'inline';
-                    progressText.textContent = `(${msg.completed}/${msg.total})`;
+                    const percent = Math.round((msg.completed / msg.total) * 100);
+                    progressBar.style.width = `${Math.max(5, percent)}%`;
+                    if (countBadge) countBadge.textContent = `(${msg.completed}/${msg.total})`;
                 }
             }
         }
@@ -379,6 +500,8 @@
         if (e.detail && e.detail.files) {
             currentFiles = e.detail.files;
             renderFileList();
+            // Inject inline buttons whenever file data is ready/updated
+            injectInlineButtons();
         }
     });
 
@@ -389,15 +512,20 @@
         // Wait a bit for content.js to finish its initial scrape
         setTimeout(() => {
             injectToolbar();
+            injectInlineButtons();
 
             // Request current file data from content.js in case we loaded after it
             sendToContentScript({ action: 'get_files' }, (response) => {
                 if (response && response.files && response.isCanvas) {
                     currentFiles = response.files;
                     renderFileList();
+                    injectInlineButtons();
                 }
             });
         }, 500);
+
+        // Periodically check for new links that might have been rendered
+        setInterval(injectInlineButtons, 2000);
     }
 
     init();

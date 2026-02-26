@@ -77,6 +77,14 @@ if (window.__cdlContentScriptLoaded) {
       if (fileInfo) {
         let actualDownloadHref = transformDownloadUrl(absoluteHref).url;
 
+        // Tag the link for inline button injection (surface scrape only)
+        if (!isDeep) {
+          link.setAttribute('data-cdl-link', 'true');
+          link.setAttribute('data-cdl-href', actualDownloadHref);
+          link.setAttribute('data-cdl-text', linkText);
+          link.setAttribute('data-cdl-type', fileInfo.type);
+        }
+
         if (!foundResources.has(actualDownloadHref)) {
           foundResources.set(actualDownloadHref, {
             text: linkText,

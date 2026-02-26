@@ -11,6 +11,7 @@ const DOWNLOAD_ICON = `
 const fileListContainer = document.getElementById('file-list');
 const searchInput = document.getElementById('search-input');
 const statusFooter = document.getElementById('status-footer');
+const settingCanvasFolder = document.getElementById('setting-canvas-folder');
 
 // --- Connection & Injection Management ---
 
@@ -457,5 +458,16 @@ if (btnBulkDownload) {
         }
       });
     }
+  });
+}
+
+// --- Settings Logic ---
+if (settingCanvasFolder) {
+  chrome.storage.sync.get(['useCanvasResourcesFolder'], (res) => {
+    settingCanvasFolder.checked = res.useCanvasResourcesFolder || false;
+  });
+
+  settingCanvasFolder.addEventListener('change', (e) => {
+    chrome.storage.sync.set({ useCanvasResourcesFolder: e.target.checked });
   });
 }

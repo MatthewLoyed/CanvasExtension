@@ -15,8 +15,10 @@
   display: inline-flex;
   align-items: center;
   vertical-align: middle;
-  margin-left: 16px;
-  z-index: 999;
+  margin: 0 12px;
+  /* Margin to space it from neighbors */
+  z-index: 1000;
+  /* Higher z-index to stay on top */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 14px;
 }
@@ -28,32 +30,161 @@
 }
 
 /* ============================================================
-   Download Button (header trigger)
+   Button Group (Split Button)
    ============================================================ */
-.cdl-download-btn {
+.cdl-button-group {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border: 1px solid #c7cdd1;
-  border-radius: 6px;
-  background: #fff;
-  color: #2d3b45;
-  font-size: 13px;
+  border-radius: 4px;
+  background: var(--ic-brand-button--primary-bgd, var(--ic-brand-primary, #0374B5));
+  color: var(--ic-brand-button--primary-text, #ffffff);
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid var(--ic-brand-button--primary-bgd-darkened-10, rgba(0, 0, 0, 0.1));
+  position: relative;
+  min-width: 140px;
+}
+
+.cdl-button-group:hover {
+  background: var(--ic-brand-button--primary-bgd-darkened-5, var(--ic-brand-primary-darkened-5, #02639b));
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+.cdl-button-group:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.cdl-main-btn,
+.cdl-toggle-btn {
+  border: none;
+  background: transparent;
+  color: var(--ic-brand-button--primary-text, #ffffff);
+  font-family: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  display: inline-flex;
+  align-items: center;
+  transition: background 0.2s;
 }
 
-.cdl-download-btn:hover {
-  background: #f5f9fc;
-  border-color: #b0b7bd;
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.08);
+.cdl-main-btn {
+  padding: 8px 16px;
+  font-size: 16px;
+  /* Increased font size for legibility */
+  font-weight: 400;
+  /* Regular weight, typical for standard buttons or 400/500 depending on framework. Canvas Buttons use body text weight. Let's use 600 or bold, Canvas uses 400 or 700. Let's stick with 500/600 to look like an action button. I'll use 600 */
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
 }
 
-.cdl-download-btn:active {
-  transform: scale(0.98);
+.cdl-toggle-btn {
+  padding: 8px 12px;
+  border-left: 1px solid rgba(255, 255, 255, 0.25);
+  /* Reverting to white separator */
+}
+
+.cdl-main-btn:hover,
+.cdl-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.cdl-main-btn:active,
+.cdl-toggle-btn:active {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* ============================================================
+   Loading Animation States
+   ============================================================ */
+.cdl-btn-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s, transform 0.2s;
+  width: 100%;
+  gap: 8px;
+  /* Consistent inner spacing */
+}
+
+.cdl-main-icon {
+  width: 14px;
+  height: 14px;
+  opacity: 0.9;
+}
+
+
+
+.cdl-file-count-badge {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0.9;
+}
+
+.cdl-button-group.is-loading .cdl-btn-content,
+.cdl-button-group.is-success .cdl-btn-content {
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+}
+
+.cdl-loading-bar-container {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all 0.3s;
+}
+
+.cdl-button-group.is-loading .cdl-loading-bar-container {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.cdl-loading-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--ic-brand-button--primary-text, #ffffff);
+  border-radius: 4px;
+  transition: width 0.3s ease-out;
+}
+
+.cdl-success-state {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  color: var(--ic-brand-button--primary-text, #ffffff);
+}
+
+.cdl-button-group.is-success .cdl-success-state {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.cdl-success-icon {
+  width: 16px;
+  height: 16px;
+  background: var(--ic-brand-button--primary-text, #ffffff);
+  color: var(--ic-brand-button--primary-bgd, var(--ic-brand-primary, #0374B5));
+  border-radius: 50%;
+  padding: 2px;
 }
 
 /* ============================================================
@@ -82,24 +213,7 @@
   transform: rotate(180deg);
 }
 
-/* ============================================================
-   Badge (file count)
-   ============================================================ */
-.cdl-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
-  border-radius: 11px;
-  background: #e1f0f8;
-  color: #0076a8;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
-  box-shadow: inset 0 0 0 1px rgba(0, 118, 168, 0.15);
-}
+/* Unused badge styles removed */
 
 /* ============================================================
    Dropdown Panel
@@ -108,16 +222,27 @@
   position: absolute;
   top: 100%;
   right: 0;
-  margin-top: 8px;
+  margin-top: 10px;
   width: 380px;
   max-width: calc(100vw - 40px);
   background: #fff;
   border: 1px solid #c7cdd1;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.05);
-  z-index: 1000;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  z-index: 1001;
   overflow: hidden;
-  animation: cdl-slide-down 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Smooth transition for opening and closing */
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px);
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+}
+
+.cdl-dropdown.cdl-dropdown-open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
 
 @keyframes cdl-slide-down {
@@ -136,13 +261,7 @@
    Dropdown Header (Download All button)
    ============================================================ */
 .cdl-dropdown-header {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: stretch;
-  padding: 12px 16px;
-  border-bottom: 1px solid #f0f2f5;
-  background: #ffffff;
+  display: none;
 }
 
 .cdl-download-all-btn {
@@ -187,6 +306,7 @@
 .cdl-file-list {
   max-height: 300px;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 4px 0;
 }
 
@@ -203,9 +323,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
+  padding: 8px 16px;
   border-bottom: 1px solid #f0f0f0;
-  transition: background 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: #fff;
 }
 
 .cdl-file-item:last-child {
@@ -213,13 +334,14 @@
 }
 
 .cdl-file-item:hover {
-  background: #f0f6fa;
+  background: #f8fafc;
+  transform: translateX(4px);
 }
 
 .cdl-file-info {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
   flex: 1;
 }
@@ -228,44 +350,83 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 9px;
+  font-weight: 800;
   text-transform: uppercase;
-  background: #e1f0f8;
-  color: #0076a8;
+  background: #fff;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
   flex-shrink: 0;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.02);
+}
+
+/* Modern File Type Colors (White Background + Tinted Border + Bold Text) */
+.cdl-badge-pdf {
+  color: #dc2626;
+  border-color: #fecaca;
+}
+
+.cdl-badge-xlsx,
+.cdl-badge-xls {
+  color: #16a34a;
+  border-color: #bbf7d0;
+}
+
+.cdl-badge-docx,
+.cdl-badge-doc {
+  color: #2563eb;
+  border-color: #bfdbfe;
+}
+
+.cdl-badge-pptx,
+.cdl-badge-ppt {
+  color: #ea580c;
+  border-color: #ffedd5;
+}
+
+.cdl-badge-zip {
+  color: #4b5563;
+  border-color: #e5e7eb;
 }
 
 .cdl-file-name {
   font-size: 13px;
-  color: #3f4a54;
+  font-weight: 600;
+  color: #2d3b45;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  transition: color 0.2s ease;
+}
+
+.cdl-file-item:hover .cdl-file-name {
+  color: #0374B5;
+  /* Satisfying blue on hover */
 }
 
 .cdl-file-download-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   background: transparent;
-  color: #666;
+  color: #71717a;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
 .cdl-file-download-btn:hover {
-  background: #e8f0fe;
-  color: #0374B5;
+  background: #f1f5f9;
+  color: #0076a8;
+  border: 1px solid #e2e8f0;
 }
 
 /* ============================================================
@@ -352,4 +513,143 @@
   text-align: center;
   color: #999;
   font-size: 12px;
+}
+
+/* ============================================================
+   Inline Download Buttons (Next to file links)
+   ============================================================ */
+.cdl-inline-btn-container {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.cdl-inline-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: white;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  position: relative;
+  overflow: hidden;
+}
+
+.cdl-inline-btn:hover {
+  background: #f8fafc;
+  border-color: #0374B5;
+  color: #0374B5;
+  transform: scale(1.1);
+  box-shadow: 0 4px 6px -1px rgba(3, 116, 181, 0.1), 0 2px 4px -1px rgba(3, 116, 181, 0.06);
+}
+
+.cdl-inline-btn svg {
+  width: 14px;
+  height: 14px;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+/* Spinner & Success Icons (Hidden by default) */
+.cdl-inline-spinner {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #e2e8f0;
+  border-top-color: #0374B5;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+.cdl-inline-success-icon {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  color: #16a34a;
+  opacity: 0;
+  transform: scale(0.5);
+  pointer-events: none;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* States */
+.cdl-inline-btn.is-loading svg:first-child {
+  opacity: 0;
+}
+
+.cdl-inline-btn.is-loading .cdl-inline-spinner {
+  opacity: 1;
+  animation: cdl-spin 0.6s linear infinite;
+}
+
+.cdl-inline-btn.is-success {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #16a34a;
+}
+
+.cdl-inline-btn.is-success svg:first-child {
+  opacity: 0;
+}
+
+.cdl-inline-btn.is-success .cdl-inline-success-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.cdl-inline-btn.is-error {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
+  animation: cdl-shake 0.4s cubic-bezier(.36, .07, .19, .97) both;
+}
+
+@keyframes cdl-shake {
+
+  10%,
+  90% {
+    transform: translate3d(-1px, 0, 0);
+  }
+
+  20%,
+  80% {
+    transform: translate3d(2px, 0, 0);
+  }
+
+  30%,
+  50%,
+  70% {
+    transform: translate3d(-2px, 0, 0);
+  }
+
+  40%,
+  60% {
+    transform: translate3d(2px, 0, 0);
+  }
+}
+
+/* Fade in the button container */
+.cdl-inline-btn-container {
+  animation: cdl-fade-in 0.3s ease-out;
+}
+
+@keyframes cdl-fade-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
