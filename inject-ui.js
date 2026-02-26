@@ -49,9 +49,6 @@
         <div class="cdl-button-group" id="cdl-button-group">
           <button id="cdl-main-btn" class="cdl-main-btn" title="Download all files found on this page">
             <div class="cdl-btn-content" id="cdl-main-text">
-              <svg class="cdl-main-icon" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M8 1a.5.5 0 0 1 .5.5v10.793l3.146-3.147a.5.5 0 0 1 .708.708l-4 4a.5.5 0 0 1-.708 0l-4-4a.5.5 0 0 1 .708-.708L7.5 12.293V1.5A.5.5 0 0 1 8 1z"/>
-              </svg>
               <span class="cdl-main-title">Download All</span>
               <span id="cdl-file-count" class="cdl-file-count-badge">(0 Files)</span>
             </div>

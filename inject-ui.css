@@ -21,6 +21,21 @@
   /* Higher z-index to stay on top */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 14px;
+
+  /* Subtle entrance animation */
+  animation: cdl-toolbar-entrance 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes cdl-toolbar-entrance {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .cdl-toolbar-inner {
@@ -114,11 +129,7 @@
   /* Consistent inner spacing */
 }
 
-.cdl-main-icon {
-  width: 14px;
-  height: 14px;
-  opacity: 0.9;
-}
+
 
 
 
