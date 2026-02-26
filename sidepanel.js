@@ -1,12 +1,6 @@
 let allResources = [];
 let port = null;
 
-const SUPPORTED_DOMAINS = [
-  'instructure.com',
-  'canvas.msstate.edu',
-  'learnx.alueducation.com'
-];
-
 const DOWNLOAD_ICON = `
   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
     <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
@@ -28,15 +22,21 @@ function showLoading() {
   </div>`;
 }
 
-// Helper to suppress runtime errors when pinging a tab that might not have a content script yet
+function showNotCanvasMessage() {
+  fileListContainer.innerHTML = `
+  <div class="message-placeholder">
+    <svg class="empty-state-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"></path>
+    </svg>
+    <p>This doesn't look like a Canvas LMS page.</p>
+    <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Navigate to your school's Canvas site, then open this panel to scan for files.</p>
+  </div>`;
+}
+
+// Helper to suppress runtime errors when pinging a tab
 function safeSendMessage(tabId, message, callback) {
   chrome.tabs.sendMessage(tabId, message, (response) => {
-    // Explicitly access lastError to effectively "catch" it and prevent the red console error
     const err = chrome.runtime.lastError;
-    if (err) {
-      // Debug only
-      // console.debug("safeSendMessage caught error (expected during init):", err.message);
-    }
     if (callback) {
       callback(err ? null : response);
     }
@@ -44,32 +44,29 @@ function safeSendMessage(tabId, message, callback) {
 }
 
 async function ensureContentScript() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab || !tab.url) {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+
+  if (!tab || !tab.url) return;
+
+  if (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://') || tab.url.startsWith('about:')) {
+    showNotCanvasMessage();
     return;
   }
 
-  const isCanvas = SUPPORTED_DOMAINS.some(domain => tab.url.includes(domain));
-
-  if (!isCanvas) return;
-
   showLoading();
 
-  // Check if content script is already there using the safe wrapper
-  safeSendMessage(tab.id, { action: 'ping' }, (response) => {
+  safeSendMessage(tab.id, { action: 'ping' }, async (response) => {
     if (!response) {
-      // Ping failed (no response or error caught), so proper 'lastError' suppression happened inside safeSendMessage.
-      // Now proceed to inject.
-      chrome.runtime.sendMessage({ action: 'inject_script', tabId: tab.id }, (injectRes) => {
-        const err = chrome.runtime.lastError; // Suppress LAST ERROR
-        if (err) return;
-
-        if (injectRes && injectRes.success) {
-          setTimeout(connectToContentScript, 150);
-        }
-      });
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content.js']
+        });
+        setTimeout(connectToContentScript, 150);
+      } catch (err) {
+        showNotCanvasMessage();
+      }
     } else {
-      // Ping succeeded, just connect
       connectToContentScript();
     }
   });
@@ -77,7 +74,7 @@ async function ensureContentScript() {
 
 
 function connectToContentScript(retries = 3) {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+  chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
     const tabId = tabs[0]?.id;
     if (!tabId) return;
 
@@ -89,6 +86,10 @@ function connectToContentScript(retries = 3) {
 
       port.onMessage.addListener((msg) => {
         if (msg.action === 'update_files') {
+          if (msg.notCanvas) {
+            showNotCanvasMessage();
+            return;
+          }
           allResources = msg.data;
           updateStatus(msg.stats);
           renderList(allResources, searchInput.value);
@@ -96,11 +97,7 @@ function connectToContentScript(retries = 3) {
       });
 
       port.onDisconnect.addListener(() => {
-        // --- THE FIX IS HERE ---
-        // We must access chrome.runtime.lastError to suppress the console error
         const err = chrome.runtime.lastError;
-        // Optional: console.debug("Port disconnected:", err ? err.message : "Clean disconnect");
-
         port = null;
         if (retries > 0) {
           setTimeout(() => connectToContentScript(retries - 1), 500);
@@ -151,157 +148,7 @@ function updateStatus(stats) {
   }
 }
 
-// --- Download Logic with Professional Queue ---
-class DownloadQueue {
-  constructor(concurrency = 4, delay = 100) {
-    this.queue = [];
-    this.active = 0;
-    this.concurrency = concurrency;
-    this.delay = delay;
-    this.total = 0;
-    this.completed = 0;
-    this.errors = 0;
-  }
-
-  add(fileItem) {
-    this.queue.push(fileItem);
-    this.total++;
-    // Set initial UI state to Queued
-    const btn = findButtonForUrl(fileItem.href);
-    if (btn) setButtonState(btn, 'queued');
-
-    this.updateUI();
-    this.process();
-  }
-
-  addBatch(fileItems) {
-    fileItems.forEach(item => {
-      this.queue.push(item);
-      this.total++;
-      // Set initial UI state to Queued
-      const btn = findButtonForUrl(item.href);
-      if (btn) setButtonState(btn, 'queued');
-    });
-    this.updateUI();
-    this.process();
-  }
-
-  updateUI() {
-    if (this.total > 0 && btnBulkDownload) {
-      if (this.queue.length === 0 && this.active === 0) {
-        btnBulkDownload.innerText = `Done! Use "Bulk Download" for more`;
-        setTimeout(() => { btnBulkDownload.innerText = 'Bulk Download All'; this.reset(); }, 4000);
-      } else {
-        btnBulkDownload.innerText = `Downloading: ${this.completed}/${this.total} (${this.queue.length} left)`;
-      }
-    }
-  }
-
-  reset() {
-    this.total = 0;
-    this.completed = 0;
-    this.errors = 0;
-  }
-
-  process() {
-    while (this.active < this.concurrency && this.queue.length > 0) {
-      this.startNext();
-    }
-  }
-
-  async startNext() {
-    this.active++;
-    const item = this.queue.shift();
-
-    // Find the button for this item to show status
-    const btn = findButtonForUrl(item.href);
-    if (btn) setButtonState(btn, 'loading');
-
-    try {
-      const finalUrl = await resolveDownloadUrl(item.href);
-
-      if (!finalUrl) {
-        throw new Error("Could not resolve a valid binary file.");
-      }
-
-      // -- SANITIZATION STEP --
-      // We try the "Pretty" name first.
-      const safeName = getSafeFilename(item.text, item.type);
-      const safeCourse = getSafeFilename(item.courseName || "General", ""); // Removed .replace dots hack, handled by getSafeFilename now
-
-      const relativePath = `Canvas_Resources/${safeCourse}/${safeName}`;
-
-      // Internal helper to perform the actual download call
-      const attemptDownload = (url, path, isRetry = false) => {
-        chrome.downloads.download({
-          url: url,
-          filename: path,
-          conflictAction: 'uniquify'
-        }, (id) => {
-          const err = chrome.runtime.lastError;
-          if (err) {
-            // -- FALLBACK LOGIC --
-            if (!isRetry) {
-              // If it failed, it might be the filename. Retry with a Safe ID.
-              console.warn("Download failed with pretty name, retrying with fallback...", err.message);
-
-              const cleanExt = (item.type && item.type.startsWith('.')) ? item.type : '.file';
-              const fallbackName = `Canvas_File_${Date.now()}_${Math.floor(Math.random() * 1000)}${cleanExt}`;
-              const fallbackPath = `Canvas_Resources/${safeCourse}/fallback/${fallbackName}`;
-
-              // RECURSIVE RETRY
-              attemptDownload(url, fallbackPath, true);
-            } else {
-              // Double fail
-              if (btn) setButtonState(btn, 'error', "OS System Error"); // Shortened for UI
-              this.errors++;
-              this.active--;
-              this.updateUI();
-              setTimeout(() => this.process(), this.delay);
-            }
-          } else {
-            // SUCCESS
-            if (btn) {
-              setButtonState(btn, 'success');
-              if (isRetry) {
-                // Optionally startle them slightly to let them know it was renamed
-                btn.title = "Saved (Renamed due to OS error)";
-              }
-            }
-            this.completed++;
-            this.active--;
-            this.updateUI();
-            setTimeout(() => this.process(), this.delay);
-          }
-        });
-      };
-
-      // Trigger the first attempt
-      attemptDownload(finalUrl, relativePath, false);
-
-    } catch (err) {
-      if (btn) setButtonState(btn, 'error', err.message);
-      this.errors++;
-      this.active--;
-      this.updateUI();
-      setTimeout(() => this.process(), this.delay);
-    }
-  }
-}
-
-const downloadMonitor = new DownloadQueue();
-
-// Helper: Find button in DOM by href (approximate)
-function findButtonForUrl(href) {
-  const cards = document.querySelectorAll('.file-card');
-  for (const card of cards) {
-    const link = card.querySelector('a.file-name');
-    if (link && link.href === href) {
-      return card.querySelector('button.btn-icon');
-    }
-  }
-  return null;
-}
+// --- Download Logic (delegated to service worker) ---
 
 function setButtonState(btn, state, msg = '') {
   if (!btn) return;
@@ -328,183 +175,62 @@ function setButtonState(btn, state, msg = '') {
   }
 }
 
-function getSafeFilename(text, extension = ".pdf") {
-  if (!text) return "download" + extension;
-
-  // 1. Basic Reserve Char Strip (Windows: < > : " / \ | ? *)
-  // Replaces them with underscore
-  let clean = text.replace(/[<>:"/\\|?*]/g, '_');
-
-  // 2. Control Characters (ASCII 0-31, 127) + Non-breaking spaces (nbsp)
-  // These often sneak in from copy-pasting and cause silent io failures
-  clean = clean.replace(/[\x00-\x1F\x7F\u00A0]/g, '_');
-
-  // 3. Trim whitespace and trailing periods (Windows hates trailing dots)
-  clean = clean.trim().replace(/\.+$/, '');
-
-  // 4. Handle Windows Reserved Names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
-  // If the filename matches these (case-insensitive), prepend an underscore
-  const reservedRegex = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
-  if (reservedRegex.test(clean)) {
-    clean = "_" + clean;
-  }
-
-  // 5. Length Truncation
-  // Windows MAX_PATH is 260. We reserve space for the directory structure.
-  // 120 chars is a safe upper bound for the filename itself.
-  if (clean.length > 120) {
-    clean = clean.substring(0, 120).trim();
-  }
-
-  // 6. Ensure Extension
-  if (extension) {
-    const ext = extension.startsWith('.') ? extension : `.${extension}`;
-    // Check if it ALREADY ends with that extension (case-insensitive)
-    if (!clean.toLowerCase().endsWith(ext.toLowerCase())) {
-      clean += ext;
+function findButtonForUrl(href) {
+  const cards = document.querySelectorAll('.file-card');
+  for (const card of cards) {
+    const link = card.querySelector('a.file-name');
+    if (link && link.href === href) {
+      return card.querySelector('button.btn-icon');
     }
   }
-
-  // Final fallback if we stripped everything away
-  if (clean.length === 0 || clean === extension) {
-    return "download" + extension;
-  }
-
-  return clean;
+  return null;
 }
 
+/**
+ * Download a single file by sending it to the content script for URL resolution,
+ * which then forwards to the service worker for actual download.
+ */
+async function downloadSingleFile(item) {
+  const btn = findButtonForUrl(item.href);
+  if (btn) setButtonState(btn, 'loading');
 
-async function resolveDownloadUrl(originalUrl) {
-  let u = new URL(originalUrl);
-
-  // 1. CLUSTER BYPASS: Always trust verified storage links
-  if (originalUrl.includes('canvas-user-content.com')) return originalUrl;
-
-  // 2. CANVAS API STRATEGY (Strict)
-  const fileIdMatch = u.pathname.match(/\/files\/(\d+)/);
-  const isActualCanvas = SUPPORTED_DOMAINS.some(domain => u.hostname.includes(domain));
-
-  if (fileIdMatch && isActualCanvas) {
-    const fileId = fileIdMatch[1];
-    const apiUrl = `${u.origin}/api/v1/files/${fileId}`;
-
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab) {
-        // Ask Content Script to fetch the API (using user cookies)
-        const response = await new Promise((resolve) => {
-          safeSendMessage(tab.id, {
-            action: 'resolve_canvas_url',
-            apiUrl: apiUrl
-          }, (res) => resolve(res));
-        });
-
-        if (response && response.success && response.url) {
-          return response.url; // ✅ Success: API gave us the clean link
-        }
-      }
-    } catch (err) {
-      // API failed
-    }
-    return null; // 🛑 Strict Mode: If Canvas API fails, abort (don't risk .htm)
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab) {
+    if (btn) setButtonState(btn, 'error', 'No active tab');
+    return;
   }
 
-  // 3. EXTERNAL / PUBLIC FILES (The "Unpacker" Strategy)
-  try {
-    // Check what the server is ACTUALLY giving us
-    const response = await fetch(u.href, { method: 'HEAD', credentials: 'include' });
-
-    if (!response.ok) return null; // Link is dead
-
-    const type = response.headers.get('Content-Type');
-
-    // IF SERVER SAYS IT'S HTML (Even if URL ends in .pdf)
-    if (type && type.includes('text/html')) {
-      // --- USE YOUR FUNCTION HERE ---
-      const realFileUrl = await unpackIntermediatePage(u.href);
-
-      if (realFileUrl) {
-        return realFileUrl; // ✅ Success: We found the binary inside the wrapper
-      }
-
-      return null; // 🛑 Failed: It was just a login page or error screen. Abort.
+  safeSendMessage(tab.id, {
+    action: 'resolve_and_download',
+    file: item
+  }, (response) => {
+    if (!response || !response.success) {
+      if (btn) setButtonState(btn, 'error', response?.error || 'Failed');
     }
-
-    // IF SERVER SAYS IT'S BINARY (PDF, DOCX, etc)
-    return u.href;
-
-  } catch (e) {
-    // If we can't verify it, we return null to be safe, 
-    // OR we can try to unpack it blindly if you prefer aggressive scraping.
-    return null;
-  }
+    // Success status will come from download_file_status message
+  });
 }
 
-async function unpackIntermediatePage(wrapperUrl) {
-  try {
-    const response = await fetch(wrapperUrl, { credentials: 'include' });
-    const html = await response.text();
-    const doc = new DOMParser().parseFromString(html, 'text/html');
+// Listen for download status updates from service worker
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.action === 'download_file_status') {
+    const btn = findButtonForUrl(msg.href);
+    if (btn) {
+      setButtonState(btn, msg.status, msg.error);
+    }
+  }
 
-    // Strategy: 1. Links ending in .pdf, 2. Buttons with 'download' classes, 3. Canvas-specific file links
-    const selectors = [
-      'a[href$=".pdf"]',
-      'a[href$=".docx"]',
-      'a[href$=".pptx"]',
-      'a[href$=".zip"]',
-      'a[href$=".xlsx"]',
-      'a[href*="/files/"][href*="/download"]',
-      'a.download-button',
-      '.instructure_file_link',
-      '#download_url'
-    ];
-
-    for (const selector of selectors) {
-      const link = doc.querySelector(selector);
-      if (link && link.href) {
-        // Ensure we return an absolute URL
-        const absolute = new URL(link.getAttribute('href'), wrapperUrl).href;
-        // Avoid infinite recursion if it finds itself
-        if (absolute !== wrapperUrl) {
-          return absolute;
-        }
+  if (msg.action === 'download_progress') {
+    if (btnBulkDownload) {
+      if (msg.done) {
+        btnBulkDownload.innerText = `Done! Use "Bulk Download" for more`;
+        setTimeout(() => { btnBulkDownload.innerText = 'Bulk Download All'; }, 4000);
+      } else {
+        btnBulkDownload.innerText = `Downloading: ${msg.completed}/${msg.total} (${msg.remaining} left)`;
       }
     }
-
-
-    return null;
-  } catch (e) {
-    return null;
   }
-}
-
-async function getTrueFileUrlFromModuleItem(moduleItemUrl) {
-  // Fetch the wrapper page
-  const res = await fetch(moduleItemUrl, { credentials: 'include' });
-  const text = await res.text();
-  const doc = new DOMParser().parseFromString(text, 'text/html');
-
-  // Look for the standard "Download" link in the header or module sequence footer
-  // Canvas usually puts the file link in a `data-api-endpoint` or similar.
-  // Common selector for the direct download link on a File Module Item page:
-  const fileLink = doc.querySelector('a[href*="/files/"][href*="/download"]');
-
-  if (fileLink) {
-    return fileLink.href;
-  }
-
-  // Fallback: Look for any link to /files/ that isn't the preview
-  const anyFile = Array.from(doc.querySelectorAll('a[href*="/files/"]'))
-    .find(a => !a.href.includes('preview') && !a.href.includes('wrap=1'));
-
-  if (anyFile) {
-    let u = new URL(anyFile.href, moduleItemUrl);
-    u.searchParams.set('download_frd', '1');
-    return u.href;
-  }
-
-  throw new Error("Could not extract file URL from module page.");
-}
+});
 
 function renderList(resources, highlightQuery = '') {
   fileListContainer.innerHTML = '';
@@ -536,6 +262,21 @@ function renderList(resources, highlightQuery = '') {
     }
   };
 
+  // Simple filename sanitization for display (matches download-engine.js logic)
+  function getSafeDisplayName(text, extension = ".pdf") {
+    if (!text) return "download" + extension;
+    let clean = text.replace(/[<>:"/\\|?*]/g, '_');
+    clean = clean.replace(/[\x00-\x1F\x7F\u00A0]/g, '_');
+    clean = clean.trim().replace(/\.+$/, '');
+    if (clean.length > 120) clean = clean.substring(0, 120).trim();
+    if (extension) {
+      const ext = extension.startsWith('.') ? extension : `.${extension}`;
+      if (!clean.toLowerCase().endsWith(ext.toLowerCase())) clean += ext;
+    }
+    if (clean.length === 0 || clean === extension) return "download" + extension;
+    return clean;
+  }
+
   const directFiles = filtered.filter(r => r.source === 'surface');
   const deepFiles = filtered.filter(r => r.source === 'deep');
 
@@ -551,7 +292,7 @@ function renderList(resources, highlightQuery = '') {
       const card = document.createElement('div');
       card.className = 'file-card';
 
-      const cleanName = getSafeFilename(item.text, item.type);
+      const cleanName = getSafeDisplayName(item.text, item.type);
       const displayText = highlightText(cleanName, query);
       const subTitle = item.context;
 
@@ -570,12 +311,8 @@ function renderList(resources, highlightQuery = '') {
       btn.title = 'Download';
       btn.innerHTML = DOWNLOAD_ICON;
 
-      // -- Use The Monitor --
       btn.addEventListener('click', () => {
-        // Add course name context if available (assuming 'item.parentPage' might have hints, or pass global)
-        // For now, we'll try to extract course name from the tab title or URL if we can, 
-        // but let's rely on a helper or "General" default for this iteration.
-        downloadMonitor.add(item);
+        downloadSingleFile(item);
       });
 
       card.appendChild(btn);
@@ -587,10 +324,9 @@ function renderList(resources, highlightQuery = '') {
   renderGroup('Found in Modules/Pages', deepFiles);
 }
 
-// --- Deep Scan / Fake Door Logic Removed ---
-// (We will re-implement this when the actual feature is ready)
-
 // --- Feedback / Support Logic ---
+const FORMSPREE_ENDPOINT = ''; // Set your Formspree endpoint here
+
 const btnFeedback = document.getElementById('btn-feedback');
 const feedbackModal = document.getElementById('feedback-modal');
 const feedbackClose = document.getElementById('feedback-close');
@@ -604,10 +340,6 @@ const feedbackSuccess = document.getElementById('feedback-success');
 function showFeedbackModal() {
   if (feedbackModal) {
     feedbackModal.style.display = 'flex';
-    // Pre-fill email if they already joined waitlist
-    if (feedbackEmail && waitlistEmail && waitlistEmail.value) {
-      feedbackEmail.value = waitlistEmail.value;
-    }
   }
 }
 
@@ -651,13 +383,10 @@ if (btnSendFeedback) {
     const type = feedbackType.value;
     const email = feedbackEmail.value || "Anonymous";
 
-    // Auto-collect tech info
     const version = chrome.runtime.getManifest().version;
     const techInfo = `\n\n-- Tech Info --\nVersion: ${version}\nUser-Agent: ${navigator.userAgent}`;
-
     const finalBody = `[${type}]\n${message}${techInfo}`;
 
-    // UI Loading
     const originalText = btnSendFeedback.innerText;
     btnSendFeedback.innerText = "Sending...";
     btnSendFeedback.disabled = true;
@@ -676,7 +405,7 @@ if (btnSendFeedback) {
       if (response.ok) {
         feedbackFormContainer.style.display = 'none';
         feedbackSuccess.style.display = 'block';
-        feedbackMessage.value = ''; // clear for next time
+        feedbackMessage.value = '';
       } else {
         throw new Error('Submission failed');
       }
@@ -688,10 +417,10 @@ if (btnSendFeedback) {
   });
 }
 
-// --- Bulk Download Logic ---
+// --- Bulk Download Logic (delegated to service worker via content script) ---
 const btnBulkDownload = document.getElementById('btn-bulk-download');
 if (btnBulkDownload) {
-  btnBulkDownload.addEventListener('click', () => {
+  btnBulkDownload.addEventListener('click', async () => {
     if (!allResources || allResources.length === 0) {
       const originText = btnBulkDownload.innerText;
       btnBulkDownload.innerText = "No files found";
@@ -700,8 +429,33 @@ if (btnBulkDownload) {
     }
 
     if (confirm(`Download ${allResources.length} files found on this page?`)) {
-      // Enque all items
-      downloadMonitor.addBatch(allResources);
+      btnBulkDownload.innerText = "Resolving URLs...";
+      btnBulkDownload.disabled = true;
+
+      // Mark all buttons as queued
+      allResources.forEach(item => {
+        const btn = findButtonForUrl(item.href);
+        if (btn) setButtonState(btn, 'queued');
+      });
+
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (!tab) {
+        btnBulkDownload.innerText = "Error: No active tab";
+        btnBulkDownload.disabled = false;
+        return;
+      }
+
+      safeSendMessage(tab.id, {
+        action: 'resolve_and_download_batch',
+        files: allResources
+      }, (response) => {
+        if (response && response.success) {
+          btnBulkDownload.innerText = `Downloading...`;
+        } else {
+          btnBulkDownload.innerText = 'Bulk Download All';
+          btnBulkDownload.disabled = false;
+        }
+      });
     }
   });
 }

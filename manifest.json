@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Canvas LMS Bulk Downloader & Resource Saver",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "description": "Effortlessly bulk download files from Canvas LMS modules and pages. One-click resource saver.",
   "icons": {
     "16": "icons/icon16.png",
@@ -12,32 +12,32 @@
   "permissions": [
     "sidePanel",
     "downloads",
-    "scripting"
+    "scripting",
+    "tabs"
   ],
   "host_permissions": [
-    "*://*.instructure.com/*",
-    "*://*.msstate.edu/*",
-    "*://*.canvas-user-content.com/*",
-    "*://learnx.alueducation.com/*",
-    "https://formspree.io/*"
+    "*://*/*"
+  ],
+  "action": {},
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*/*"
+      ],
+      "js": [
+        "content.js",
+        "inject-ui.js"
+      ],
+      "css": [
+        "inject-ui.css"
+      ],
+      "run_at": "document_idle"
+    }
   ],
   "background": {
     "service_worker": "service-worker.js"
   },
   "side_panel": {
     "default_path": "sidepanel.html"
-  },
-  "content_scripts": [
-    {
-      "matches": [
-        "*://*.instructure.com/*",
-        "*://canvas.msstate.edu/*",
-        "*://learnx.alueducation.com/*"
-      ],
-      "js": [
-        "content.js"
-      ],
-      "run_at": "document_end"
-    }
-  ]
+  }
 }
