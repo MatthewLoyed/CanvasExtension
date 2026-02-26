@@ -90,25 +90,18 @@
     function injectToolbar() {
         const toolbar = createToolbar();
 
-        // 1. Try to find a right-aligned Canvas header container
-        const rightActionContainer = document.querySelector('.header-bar-right, .ic-Action-header__Secondary, .page-action-list');
+        // Use the breadcrumbs as the primary anchor. This is the most consistent 
+        // element across all Canvas pages (Syllabus, Modules, Assignments, etc.)
         const breadcrumbs = document.getElementById('breadcrumbs');
+        const headerBar = document.querySelector('.ic-app-nav-toggle-and-main-content');
         const contentArea = document.getElementById('content');
 
-        if (rightActionContainer) {
-            // Append to the end of right actions
-            rightActionContainer.appendChild(toolbar);
-        } else if (breadcrumbs && breadcrumbs.parentNode) {
-            // Check if the parent is a header bar (often flex)
-            const headerActions = breadcrumbs.closest('.ic-app-nav-toggle-and-main-content, .header-bar');
-            if (headerActions) {
-                // Insert at the end so margin-left: auto pushes it to the right
-                headerActions.appendChild(toolbar);
-            } else {
-                breadcrumbs.parentNode.appendChild(toolbar);
-            }
+        if (breadcrumbs && breadcrumbs.parentNode) {
+            breadcrumbs.parentNode.insertBefore(toolbar, breadcrumbs.nextSibling);
         } else if (contentArea) {
             contentArea.insertBefore(toolbar, contentArea.firstChild);
+        } else if (headerBar) {
+            headerBar.insertBefore(toolbar, headerBar.firstChild);
         } else {
             document.body.insertBefore(toolbar, document.body.firstChild);
         }
