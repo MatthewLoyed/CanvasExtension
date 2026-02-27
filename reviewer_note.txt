@@ -1,19 +1,18 @@
 ### Tester Instructions for Download Functionality:
 
-To verify the "Downloads" (Red Potassium) functionality:
+To verify the "Canvas Downloader" functionality:
 
 1. **Login Required**: Log in to a Canvas LMS instance (e.g., https://canvas.instructure.com or your university's Canvas URL).
-   * Note: The extension only activates on domains matching `*.instructure.com` or specific university Canvas domains listed in the manifest.
+   * Note: The extension only activates on domains matching `*.instructure.com` or specific university Canvas domains.
 2. **Navigate**: Go to a course page that contains files (e.g., "Modules" or "Files" section).
-3. **Open Side Panel**: Click the extension icon in the toolbar and select "Open Side Panel" (or click the action button if configured).
-4. **Scan**: The extension will automatically scan the current page for resources.
-   * *Success Indicator*: You should see a list of detected files (PDFs, PPTs, etc.) appear in the side panel.
-   * *If Empty*: If the list is empty, ensure the current page actually contains direct file links.
-5. **Test Single Download**: Click the "Download" icon (down arrow) next to any file in the list.
+3. **Verify UI Injection**: The extension will automatically detect the page type and inject download buttons directly into the Canvas interface.
+   * *Success Indicator*: You should see a "Download All" button injected above module headers, or an individual download icon added to Canvas's file rows.
+   * *Extension Popup*: You can also click the extension icon in the Chrome toolbar to verify its active status or change download folder preferences.
+4. **Test Single Download**: Click the download icon injected next to any file row.
    * **Expected Result**: The file successfully downloads via the browser's native download manager.
-   * **Note on Spinners**: You may see a brief "Spinner" icon. This is the **Recursive URL Unpacker** active (see below).
-6. **Test Bulk Download**: Click the "Bulk Download" button at the bottom.
-   * **Expected Result**: All listed files should download sequentially into organized folders.
+   * **Note on Spinners**: You may see a brief spinner. This is the **Recursive URL Unpacker** / API resolver active (see below).
+5. **Test Bulk Download**: Click the "Download All" button injected into the Canvas UI.
+   * **Expected Result**: All detected files will sequence through and download seamlessly.
 
 **Logic Update Note (The "HTML Fix")**: 
 We have implemented an **Authenticated API Proxy** to specifically fix the issue where intermediate policy pages (HTML wrappers) were being downloaded instead of the PDF.
