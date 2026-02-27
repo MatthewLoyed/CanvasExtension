@@ -75,7 +75,7 @@ if (window.__cdlContentScriptLoaded) {
 
       const fileInfo = detectFile(link, absoluteHref, linkText);
       if (fileInfo) {
-        let actualDownloadHref = transformDownloadUrl(absoluteHref).url;
+        let actualDownloadHref = window.CanvasDownloader.transformDownloadUrl(absoluteHref).url;
 
         // Tag the link for inline button injection (surface scrape only)
         if (!isDeep) {
@@ -314,7 +314,7 @@ if (window.__cdlContentScriptLoaded) {
 
     if (detail.action === 'resolve_and_download') {
       try {
-        const resolvedUrl = await resolveFileUrl(detail.file);
+        const resolvedUrl = await window.CanvasDownloader.resolveFileUrl(detail.file);
         if (!resolvedUrl) {
           sendResponse({ success: false, error: 'Could not resolve URL' });
           return;
@@ -338,7 +338,7 @@ if (window.__cdlContentScriptLoaded) {
       const files = detail.files || [];
       try {
         const resolvedFiles = await Promise.all(files.map(file =>
-          resolveFileUrl(file).then(resolvedUrl => ({
+          window.CanvasDownloader.resolveFileUrl(file).then(resolvedUrl => ({
             url: resolvedUrl,
             filename: file.text,
             courseName: file.courseName,
@@ -375,53 +375,6 @@ if (window.__cdlContentScriptLoaded) {
     }
   });
 
-
-
-  function transformDownloadUrl(urlStr) {
-    try {
-      const u = new URL(urlStr);
-      // Dynamic: a Canvas link is one on the same hostname as the current page
-      const isCanvasLink = u.hostname === window.location.hostname;
-
-      if (!isCanvasLink) return { url: urlStr, isExternal: true };
-
-      // --- NEW FIX FOR MODULE LINKS ---
-      if (u.searchParams.has('module_item_id')) {
-        u.searchParams.delete('module_item_id');
-      }
-      // --------------------------------
-
-      if (u.pathname.includes('/files')) {
-        const verifier = u.searchParams.get('verifier');
-        const previewId = u.searchParams.get('preview');
-
-        // Handle "Preview" wrapper links
-        if (u.pathname.endsWith('/files') && previewId) {
-          u.pathname += `/${previewId}/download`;
-          u.searchParams.delete('preview');
-          u.searchParams.delete('wrap');
-        } else {
-          // Handle standard file links
-          u.searchParams.delete('wrap');
-          u.searchParams.delete('preview');
-          if (!u.pathname.endsWith('/download')) {
-            u.pathname = u.pathname.replace(/\/+$/, '') + '/download';
-          }
-        }
-
-        if (verifier) u.searchParams.set('verifier', verifier);
-
-        // Force the "File Read" download mode
-        u.searchParams.set('download_frd', '1');
-
-        return { url: u.href, isExternal: false };
-      }
-      return { url: u.href, isExternal: false };
-    } catch (e) {
-      return { url: urlStr, isExternal: false };
-    }
-  }
-
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === 'ping') {
       sendResponse({
@@ -450,9 +403,8 @@ if (window.__cdlContentScriptLoaded) {
       return true;
     }
 
-    // Resolve a single file URL and send to service worker for download
     if (msg.action === 'resolve_and_download') {
-      resolveFileUrl(msg.file)
+      window.CanvasDownloader.resolveFileUrl(msg.file)
         .then(resolvedUrl => {
           if (!resolvedUrl) {
             sendResponse({ success: false, error: 'Could not resolve URL' });
@@ -474,11 +426,10 @@ if (window.__cdlContentScriptLoaded) {
       return true;
     }
 
-    // Resolve a batch of file URLs and send to service worker
     if (msg.action === 'resolve_and_download_batch') {
       const files = msg.files || [];
       Promise.all(files.map(file =>
-        resolveFileUrl(file).then(resolvedUrl => ({
+        window.CanvasDownloader.resolveFileUrl(file).then(resolvedUrl => ({
           url: resolvedUrl,
           filename: file.text,
           courseName: file.courseName,
@@ -500,7 +451,6 @@ if (window.__cdlContentScriptLoaded) {
       return true;
     }
 
-    // Return current file data (for inject-ui.js to request on load)
     if (msg.action === 'get_files') {
       sendResponse({
         files: Array.from(foundResources.values()),
@@ -510,77 +460,5 @@ if (window.__cdlContentScriptLoaded) {
     }
   });
 
-  /**
-   * Resolve a file object's href to a direct binary download URL.
-   * Uses the Canvas API with page cookies for authentication.
-   */
-  async function resolveFileUrl(file) {
-    try {
-      const u = new URL(file.href);
-
-      // Already a direct CDN link
-      if (file.href.includes('canvas-user-content.com')) return file.href;
-
-      // Canvas API strategy for /files/ URLs
-      const fileIdMatch = u.pathname.match(/\/files\/(\d+)/);
-      if (fileIdMatch) {
-        const fileId = fileIdMatch[1];
-        const apiUrl = `${u.origin}/api/v1/files/${fileId}`;
-        try {
-          const response = await fetch(apiUrl, { credentials: 'include' });
-          if (response.ok) {
-            const data = await response.json();
-            if (data.url) return data.url;
-          }
-        } catch (e) {
-          // API failed, fall through
-        }
-        return null; // Strict: if Canvas API fails, don't risk .htm
-      }
-
-      // External files: check content type
-      try {
-        const response = await fetch(u.href, { method: 'HEAD', credentials: 'include' });
-        if (!response.ok) return null;
-        const type = response.headers.get('Content-Type');
-        if (type && type.includes('text/html')) {
-          // Try to unpack wrapper page
-          return await unpackIntermediatePage(u.href);
-        }
-        return u.href;
-      } catch (e) {
-        return null;
-      }
-    } catch (e) {
-      return null;
-    }
-  }
-
-  /**
-   * Try to extract an actual file URL from an HTML wrapper page.
-   */
-  async function unpackIntermediatePage(wrapperUrl) {
-    try {
-      const response = await fetch(wrapperUrl, { credentials: 'include' });
-      const html = await response.text();
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      const selectors = [
-        'a[href$=".pdf"]', 'a[href$=".docx"]', 'a[href$=".pptx"]',
-        'a[href$=".zip"]', 'a[href$=".xlsx"]',
-        'a[href*="/files/"][href*="/download"]',
-        'a.download-button', '.instructure_file_link', '#download_url'
-      ];
-      for (const selector of selectors) {
-        const link = doc.querySelector(selector);
-        if (link && link.getAttribute('href')) {
-          const absolute = new URL(link.getAttribute('href'), wrapperUrl).href;
-          if (absolute !== wrapperUrl) return absolute;
-        }
-      }
-      return null;
-    } catch (e) {
-      return null;
-    }
-  }
 
 } // end of double-injection guard

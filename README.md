@@ -1,4 +1,4 @@
-# Canvas Bulk Downloader
+# Canvas Downloader - Bulk Save Modules & Course Files
 
 A tailored Chrome Extension designed to fix the "broken download" experience often found on Canvas LMS and university policy sites.
 
@@ -6,7 +6,7 @@ A tailored Chrome Extension designed to fix the "broken download" experience oft
 Canvas often serves files inside HTML "wrapper" pages (previews) rather than direct binary links. Standard bulk downloaders or "Save Link As" often result in useless `.htm` files instead of the actual `.pdf` or `.docx`.
 
 ### 🛠 The Solution
-This extension injects a sidebar that scans the current course or module and intelligently resolves the *true* download URL before queuing the file.
+This extension injects a convenient dropdown menu directly into the Canvas page that scans the current course or module and intelligently resolves the *true* download URL before queuing the file.
 
 **Key Features:**
 * **Smart Resolution Engine:** Automatically detects if a link is a direct file, a Canvas API asset, or an HTML wrapper.
@@ -17,7 +17,7 @@ This extension injects a sidebar that scans the current course or module and int
 
 ### 💬 Feedback & Support
 Found a bug or have a suggestion?
-Use the **Feedback Button** (💬) inside the extension side panel to send a message directly to the developer.
+Use the **Feedback Button** inside the **Extension Popup** to send a message directly to the developer.
 
 ---
 ### 🏗 Technical Stack
