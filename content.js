@@ -424,7 +424,10 @@ if (window.__cdlContentScriptLoaded) {
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === 'ping') {
-      sendResponse({ status: 'alive' });
+      sendResponse({
+        status: 'alive',
+        fileCount: foundResources.size
+      });
       return;
     }
     if (msg.action === "navigation_refresh") {

@@ -72,6 +72,13 @@
         </div>
       </div>
       <div id="cdl-dropdown" class="cdl-dropdown">
+        <div class="cdl-dropdown-info">
+          <div class="cdl-info-brand">
+            <img src="${chrome.runtime.getURL('icons/icon32.png')}" alt="Logo" class="cdl-info-logo" />
+            <span class="cdl-info-title">Canvas Downloader</span>
+          </div>
+          <span class="cdl-info-subtitle">Individual Files</span>
+        </div>
         <div class="cdl-dropdown-header" style="display:none;">
           <button id="cdl-download-all-btn" class="cdl-download-all-btn">
             <svg class="cdl-icon-sm" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -85,14 +92,6 @@
         <div id="cdl-file-list" class="cdl-file-list">
           <!-- Files rendered here -->
         </div>
-        <div class="cdl-dropdown-footer">
-          <button id="cdl-open-panel-btn" class="cdl-open-panel-btn" title="Open full side panel for search & filters">
-            <svg class="cdl-icon-sm" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/>
-              <path d="M11 2a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9.5a.5.5 0 0 1 0-1H11V3H9.5a.5.5 0 0 1 0-1H11z"/>
-            </svg>
-            <span style="display:inline-block; margin-top:2px;">Open Full Panel</span>
-          </button>
         </div>
       </div>
     `;
@@ -121,8 +120,6 @@
             contentArea.insertBefore(toolbar, contentArea.firstChild);
         } else if (headerBar) {
             headerBar.insertBefore(toolbar, headerBar.firstChild);
-        } else {
-            document.body.insertBefore(toolbar, document.body.firstChild);
         }
 
         // Bind events
@@ -136,7 +133,6 @@
         const mainBtn = document.getElementById('cdl-main-btn');
         const toggleBtn = document.getElementById('cdl-toggle-btn');
         const downloadAllBtn = document.getElementById('cdl-download-all-btn');
-        const openPanelBtn = document.getElementById('cdl-open-panel-btn');
         const dropdown = document.getElementById('cdl-dropdown');
 
         // Main button: Instantly download all
@@ -165,15 +161,11 @@
             downloadAll();
         });
 
-        // Open side panel
-        openPanelBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            chrome.runtime.sendMessage({ action: 'open_sidepanel' });
-        });
-
+        // Feedback Modal Logic
         // Close dropdown when clicking outside
         document.addEventListener('click', (e) => {
             const toolbar = document.getElementById('cdl-toolbar');
+
             if (toolbar && !toolbar.contains(e.target) && isDropdownOpen) {
                 isDropdownOpen = false;
                 dropdown.classList.remove('cdl-dropdown-open');

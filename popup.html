@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Canvas Resources Settings</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <header>
+        <div class="title-row">
+            <img src="icons/icon128.png" class="logo-icon" alt="Canvas Resources Logo">
+            <h1>Canvas Resources</h1>
+        </div>
+    </header>
+
+    <div id="dashboard-status" class="dashboard-status">
+        <div class="loader" id="status-loader" style="display: none;"></div>
+        <svg id="status-icon" class="status-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"></path>
+        </svg>
+        <p id="status-text">Checking Canvas...</p>
+    </div>
+
+    <div class="settings-section">
+        <h3>Settings</h3>
+        <div class="settings-row">
+            <input type="checkbox" id="setting-canvas-folder">
+            <label for="setting-canvas-folder">Save downloads in 'Canvas Resources' folder</label>
+        </div>
+    </div>
+
+    <div class="feedback-section">
+        <button id="btn-show-feedback" class="btn-primary">
+            Report an issue / Feedback
+        </button>
+    </div>
+
+    <!-- Feedback Modal -->
+    <div id="feedback-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <button id="feedback-close" class="modal-close">&times;</button>
+            <div class="modal-header">
+                <h2>💬 Send Feedback</h2>
+            </div>
+            <div class="modal-body">
+                <p>I'm a student just like you so let me know how I can improve this. Found a bug? Have a feature request? Let me know directly.</p>
+                
+                <div id="feedback-form-container">
+                    <select id="feedback-type" class="modal-input">
+                        <option value="Bug Report">🐛 Bug Report</option>
+                        <option value="Feature Request" selected>✨ Feature Request</option>
+                        <option value="Question">❓ General Question</option>
+                    </select>
+                    
+                    <textarea id="feedback-message" class="modal-input" rows="4" placeholder="Tell me what's on your mind..."></textarea>
+                    <input type="email" id="feedback-email" placeholder="Your Email (optional)" class="modal-input">
+                    
+                    <button id="btn-send-feedback" class="btn-cta">Submit Feedback</button>
+                </div>
+
+                <div id="feedback-success" style="display: none;">
+                    <p class="success-msg">🎉 Thanks! I've received your message.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

@@ -1,16 +1,6 @@
 // Service worker - download orchestration + side panel management
 importScripts('download-engine.js');
 
-// --- Side Panel: open on icon click (not auto-open) ---
-chrome.action.onClicked.addListener(async (tab) => {
-    try {
-        await chrome.sidePanel.open({ tabId: tab.id });
-    } catch (err) {
-        // sidePanel.open() may not be available in older Chrome versions
-        console.warn("[SW] Could not open side panel:", err.message);
-    }
-});
-
 // --- Download Queue Instance ---
 const downloadQueue = new DownloadQueue(4, 100);
 
@@ -39,17 +29,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
     }
 
-    // Open side panel (requested by inject-ui.js)
-    if (msg.action === 'open_sidepanel') {
-        const tabId = msg.tabId || sender.tab?.id;
-        if (tabId) {
-            chrome.sidePanel.open({ tabId: tabId }).catch(() => { });
-        }
-        sendResponse({ success: true });
-        return;
-    }
-
-    // Legacy: inject content script (kept for sidepanel.js compatibility)
+    // Legacy: inject content script (kept for compatibility if needed)
     if (msg.action === 'inject_script') {
         chrome.scripting.executeScript({
             target: { tabId: msg.tabId },

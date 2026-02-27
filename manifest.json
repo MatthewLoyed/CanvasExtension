@@ -10,7 +10,6 @@
     "128": "icons/icon128.png"
   },
   "permissions": [
-    "sidePanel",
     "downloads",
     "scripting",
     "tabs",
@@ -19,7 +18,9 @@
   "host_permissions": [
     "*://*/*"
   ],
-  "action": {},
+  "action": {
+    "default_popup": "popup.html"
+  },
   "content_scripts": [
     {
       "matches": [
@@ -38,7 +39,14 @@
   "background": {
     "service_worker": "service-worker.js"
   },
-  "side_panel": {
-    "default_path": "sidepanel.html"
-  }
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/*"
+      ],
+      "matches": [
+        "*://*/*"
+      ]
+    }
+  ]
 }

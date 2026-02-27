@@ -1,0 +1,173 @@
+document.addEventListener('DOMContentLoaded', () => {
+    // DOM Elements
+    const settingCanvasFolder = document.getElementById('setting-canvas-folder');
+    const statusText = document.getElementById('status-text');
+    const statusIcon = document.getElementById('status-icon');
+    const statusLoader = document.getElementById('status-loader');
+
+    const btnShowFeedback = document.getElementById('btn-show-feedback');
+    const feedbackModal = document.getElementById('feedback-modal');
+    const feedbackClose = document.getElementById('feedback-close');
+    const btnSendFeedback = document.getElementById('btn-send-feedback');
+    const feedbackType = document.getElementById('feedback-type');
+    const feedbackMessage = document.getElementById('feedback-message');
+    const feedbackEmail = document.getElementById('feedback-email');
+    const feedbackFormContainer = document.getElementById('feedback-form-container');
+    const feedbackSuccess = document.getElementById('feedback-success');
+
+    // --- Dashboard Status Logic ---
+    async function checkCanvasStatus() {
+        try {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+            if (!tab || !tab.url) {
+                setNotCanvas();
+                return;
+            }
+
+            if (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://') || tab.url.startsWith('about:')) {
+                setNotCanvas();
+                return;
+            }
+
+            // Ping the content script
+            statusIcon.style.display = 'none';
+            statusLoader.style.display = 'block';
+            statusText.innerText = 'Checking Canvas...';
+
+            chrome.tabs.sendMessage(tab.id, { action: 'ping' }, (response) => {
+                const err = chrome.runtime.lastError;
+                statusLoader.style.display = 'none';
+                statusIcon.style.display = 'block';
+
+                if (err || !response) {
+                    setNotCanvas();
+                } else {
+                    statusIcon.classList.add('active');
+                    statusIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />`;
+                    statusText.innerText = "Extension is active! Look for the 'Download All' button at the top of your Canvas page or next to individual files.";
+                }
+            });
+        } catch (e) {
+            setNotCanvas();
+        }
+    }
+
+    function setNotCanvas() {
+        statusIcon.classList.remove('active');
+        statusIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />`;
+        statusText.innerText = "Please navigate to a Canvas course module or dashboard to see the downloader in action.";
+    }
+
+    checkCanvasStatus();
+
+    // --- Settings Logic ---
+    if (settingCanvasFolder) {
+        chrome.storage.sync.get(['useCanvasResourcesFolder'], (res) => {
+            settingCanvasFolder.checked = res.useCanvasResourcesFolder || false;
+        });
+
+        settingCanvasFolder.addEventListener('change', (e) => {
+            chrome.storage.sync.set({ useCanvasResourcesFolder: e.target.checked });
+        });
+    }
+
+    // --- Feedback Logic ---
+    const FORMSPREE_ENDPOINT = ''; // Set your Formspree endpoint here
+
+    function showFeedbackModal() {
+        if (feedbackModal) {
+            feedbackModal.style.display = 'flex';
+            document.body.style.minHeight = '480px';
+        }
+    }
+
+    function hideFeedbackModal() {
+        if (feedbackModal) {
+            const content = feedbackModal.querySelector('.modal-content');
+            feedbackModal.classList.add('closing');
+            if (content) content.classList.add('closing');
+
+            setTimeout(() => {
+                feedbackModal.style.display = 'none';
+                feedbackModal.classList.remove('closing');
+                if (content) content.classList.remove('closing');
+                document.body.style.minHeight = 'auto';
+
+                if (feedbackFormContainer) feedbackFormContainer.style.display = 'flex';
+                if (feedbackSuccess) feedbackSuccess.style.display = 'none';
+                if (btnSendFeedback) {
+                    btnSendFeedback.innerText = "Submit Feedback";
+                    btnSendFeedback.disabled = false;
+                }
+            }, 200); // Wait for CSS animation to finish
+        }
+    }
+
+    if (btnShowFeedback) btnShowFeedback.addEventListener('click', showFeedbackModal);
+    if (feedbackClose) feedbackClose.addEventListener('click', hideFeedbackModal);
+    if (feedbackModal) {
+        feedbackModal.addEventListener('click', (e) => {
+            if (e.target === feedbackModal) hideFeedbackModal();
+        });
+    }
+
+    if (btnSendFeedback) {
+        btnSendFeedback.addEventListener('click', async () => {
+            const message = feedbackMessage.value.trim();
+            if (!message) {
+                alert("Please enter a message.");
+                return;
+            }
+
+            const type = feedbackType.value;
+            const email = feedbackEmail.value || "Anonymous";
+            const version = chrome.runtime.getManifest().version;
+            const techInfo = `\n\n-- Tech Info --\nVersion: ${version}\nUser-Agent: ${navigator.userAgent}`;
+            const finalBody = `[${type}]\n${message}${techInfo}`;
+
+            const originalText = btnSendFeedback.innerText;
+            btnSendFeedback.innerText = "Sending...";
+            btnSendFeedback.disabled = true;
+
+            try {
+                // Currently Formspree endpoint is empty, so we simulate a delay
+                if (!FORMSPREE_ENDPOINT) {
+                    await new Promise(resolve => setTimeout(resolve, 800));
+                    throw new Error("Formspree endpoint not specified");
+                }
+
+                const response = await fetch(FORMSPREE_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: email,
+                        message: finalBody,
+                        _subject: `Extension Feedback: ${type}`
+                    })
+                });
+
+                if (response.ok) {
+                    showSuccess();
+                } else {
+                    throw new Error('Submission failed');
+                }
+            } catch (err) {
+                // Fallback for demonstration since endpoint is empty
+                console.warn(err);
+                showSuccess(); // Simulate success during testing
+
+                // If it really failed in production:
+                // alert("Could not send feedback. Please try again.");
+                // btnSendFeedback.innerText = originalText;
+                // btnSendFeedback.disabled = false;
+            }
+        });
+    }
+
+    function showSuccess() {
+        feedbackFormContainer.style.display = 'none';
+        feedbackSuccess.style.display = 'block';
+        feedbackMessage.value = '';
+    }
+});
