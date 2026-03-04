@@ -10,4 +10,3 @@
 13. Deep Scan: Fix stuck QUEUED files — some deep-scanned links fail URL resolution silently (likely external publisher links)
 14. Deep Scan: Fix ".file" type detection — detect actual extension from URL/content-type when extension is unknown
 15. The download all button needs to say "no files found on this page" and not do anything if zero files are found. We need to find a way to make sure we are accurate and quick with the zero files. The button should also probably be grayed out if there's no files on the page or something. 
-16. Should we have a re-scan button for the user, for deep scan? 

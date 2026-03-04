@@ -99,6 +99,16 @@
             downloadAll();
         });
 
+        // Re-scan Button: Trigger a manual deep scan
+        const rescanBtn = document.getElementById('cdl-rescan-btn');
+        if (rescanBtn) {
+            rescanBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                // Send event to content.js to bypass cache and rescan
+                document.dispatchEvent(new CustomEvent('cdl-trigger-rescan'));
+            });
+        }
+
         // Feedback Modal Logic
         // Close dropdown when clicking outside
         document.addEventListener('click', (e) => {
@@ -386,8 +396,13 @@
             } else {
                 scanText.textContent = 'Scanning...';
             }
+
+            const rescanBtn = document.getElementById('cdl-rescan-btn');
+            if (rescanBtn) rescanBtn.classList.add('is-spinning');
         } else {
             scanStatus.style.display = 'none';
+            const rescanBtn = document.getElementById('cdl-rescan-btn');
+            if (rescanBtn) rescanBtn.classList.remove('is-spinning');
         }
     });
 

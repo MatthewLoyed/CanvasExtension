@@ -411,6 +411,26 @@ if (window.__cdlContentScriptLoaded) {
 
   init();
 
+  // Listen for manual re-scan trigger from inject-ui.js
+  document.addEventListener('cdl-trigger-rescan', () => {
+    const courseId = window.CanvasDownloader.extractCourseId();
+    if (!courseId || isDeepScraping) return;
+
+    // Clear cache for this course
+    sessionStorage.removeItem(getCacheKey(courseId));
+
+    // Clear previously found deep scan files from UI
+    for (const [key, file] of foundResources.entries()) {
+      if (file.source === 'deep') {
+        foundResources.delete(key);
+      }
+    }
+    sendUpdate(); // Update UI to show count without deep files
+
+    // Start fresh scan
+    startDeepScan();
+  });
+
   // ============================================================
   // CustomEvent listener for inject-ui.js communication
   // (Content scripts in the same tab can't use chrome.runtime.sendMessage

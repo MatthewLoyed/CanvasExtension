@@ -306,6 +306,46 @@
   font-weight: 500;
 }
 
+.cdl-info-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cdl-rescan-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.cdl-rescan-btn:hover {
+  color: #0374B5;
+  background: #f1f5f9;
+}
+
+.cdl-rescan-btn:active {
+  transform: scale(0.95);
+}
+
+.cdl-rescan-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cdl-rescan-btn.is-spinning svg {
+  animation: cdl-spin 1s linear infinite;
+  color: #0374B5;
+}
+
 /* ============================================================
    Dropdown Header (Download All button)
    ============================================================ */
@@ -706,7 +746,9 @@
 }
 
 @keyframes cdl-pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
     transform: scale(1);
   }
