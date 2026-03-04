@@ -361,6 +361,28 @@
     });
 
     // ============================================================
+    // Listen for Deep Scan Status from content.js
+    // ============================================================
+    document.addEventListener('cdl-deep-scan-status', (e) => {
+        const scanStatus = document.getElementById('cdl-scan-status');
+        const scanText = document.getElementById('cdl-scan-text');
+        if (!scanStatus || !scanText) return;
+
+        const detail = e.detail || {};
+
+        if (detail.status === 'scanning') {
+            scanStatus.style.display = 'inline-flex';
+            if (detail.total > 0) {
+                scanText.textContent = `Scanning ${detail.current}/${detail.total}...`;
+            } else {
+                scanText.textContent = 'Scanning...';
+            }
+        } else {
+            scanStatus.style.display = 'none';
+        }
+    });
+
+    // ============================================================
     // Initialize
     // ============================================================
     function init() {

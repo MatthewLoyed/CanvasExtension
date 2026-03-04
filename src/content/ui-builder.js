@@ -6,31 +6,35 @@
 window.CanvasDownloaderUI = window.CanvasDownloaderUI || {};
 
 window.CanvasDownloaderUI.getSafeDisplayName = function (text, extension = ".pdf") {
-    if (!text) return "download" + extension;
-    let clean = text.replace(/[<>:"/\\|?*]/g, '_');
-    clean = clean.replace(/[\x00-\x1F\x7F\u00A0]/g, '_');
-    clean = clean.trim().replace(/\.+$/, '');
-    if (clean.length > 120) clean = clean.substring(0, 120).trim();
-    if (extension) {
-        const ext = extension.startsWith('.') ? extension : `.${extension}`;
-        if (!clean.toLowerCase().endsWith(ext.toLowerCase())) clean += ext;
-    }
-    if (clean.length === 0 || clean === extension) return "download" + extension;
-    return clean;
+  if (!text) return "download" + extension;
+  let clean = text.replace(/[<>:"/\\|?*]/g, '_');
+  clean = clean.replace(/[\x00-\x1F\x7F\u00A0]/g, '_');
+  clean = clean.trim().replace(/\.+$/, '');
+  if (clean.length > 120) clean = clean.substring(0, 120).trim();
+  if (extension) {
+    const ext = extension.startsWith('.') ? extension : `.${extension}`;
+    if (!clean.toLowerCase().endsWith(ext.toLowerCase())) clean += ext;
+  }
+  if (clean.length === 0 || clean === extension) return "download" + extension;
+  return clean;
 };
 
 window.CanvasDownloaderUI.createToolbar = function (iconUrl) {
-    const toolbar = document.createElement('div');
-    toolbar.id = 'cdl-toolbar';
-    toolbar.className = 'cdl-toolbar';
+  const toolbar = document.createElement('div');
+  toolbar.id = 'cdl-toolbar';
+  toolbar.className = 'cdl-toolbar';
 
-    toolbar.innerHTML = `
+  toolbar.innerHTML = `
       <div class="cdl-toolbar-inner">
         <div class="cdl-button-group" id="cdl-button-group">
           <button id="cdl-main-btn" class="cdl-main-btn" title="Download all files found on this page">
             <div class="cdl-btn-content" id="cdl-main-text">
               <span class="cdl-main-title">Download All</span>
               <span id="cdl-file-count" class="cdl-file-count-badge">(0 Files)</span>
+              <span id="cdl-scan-status" class="cdl-scan-status" style="display:none;">
+                <span class="cdl-scan-dot"></span>
+                <span id="cdl-scan-text">Scanning...</span>
+              </span>
             </div>
             
             <div class="cdl-loading-bar-container">
@@ -76,42 +80,44 @@ window.CanvasDownloaderUI.createToolbar = function (iconUrl) {
       </div>
     `;
 
-    return toolbar;
+  return toolbar;
 };
 
 window.CanvasDownloaderUI.renderFileList = function (currentFiles, onDownloadClick) {
-    const fileList = document.getElementById('cdl-file-list');
-    const countBadge = document.getElementById('cdl-file-count');
+  const fileList = document.getElementById('cdl-file-list');
+  const countBadge = document.getElementById('cdl-file-count');
 
-    if (!fileList || !countBadge) return;
+  if (!fileList || !countBadge) return;
 
-    const count = currentFiles.length;
+  const count = currentFiles.length;
 
-    // Update badge text
-    countBadge.textContent = `(${count} File${count === 1 ? '' : 's'})`;
+  // Update badge text
+  countBadge.textContent = `(${count} File${count === 1 ? '' : 's'})`;
 
-    // Handle visibility
-    const toolbar = document.getElementById('cdl-toolbar');
-    if (toolbar) {
-        toolbar.style.display = count > 0 ? 'inline-flex' : 'none';
-    }
+  // Handle visibility — keep visible during deep scan even if no files yet
+  const toolbar = document.getElementById('cdl-toolbar');
+  const scanStatus = document.getElementById('cdl-scan-status');
+  const isScanning = scanStatus && scanStatus.style.display !== 'none';
+  if (toolbar) {
+    toolbar.style.display = (count > 0 || isScanning) ? 'inline-flex' : 'none';
+  }
 
-    fileList.innerHTML = '';
-    if (count === 0) {
-        fileList.innerHTML = '<div class="cdl-empty">No downloadable files found on this page.</div>';
-        return;
-    }
+  fileList.innerHTML = '';
+  if (count === 0) {
+    fileList.innerHTML = '<div class="cdl-empty">No downloadable files found on this page.</div>';
+    return;
+  }
 
-    currentFiles.forEach((file, index) => {
-        const item = document.createElement('div');
-        item.className = 'cdl-file-item';
-        item.setAttribute('data-href', file.href);
+  currentFiles.forEach((file, index) => {
+    const item = document.createElement('div');
+    item.className = 'cdl-file-item';
+    item.setAttribute('data-href', file.href);
 
-        const ext = (file.type || 'file').replace('.', '').toUpperCase();
-        const displayName = window.CanvasDownloaderUI.getSafeDisplayName(file.text, file.type);
-        const extClass = `cdl-badge-${ext.toLowerCase()}`;
+    const ext = (file.type || 'file').replace('.', '').toUpperCase();
+    const displayName = window.CanvasDownloaderUI.getSafeDisplayName(file.text, file.type);
+    const extClass = `cdl-badge-${ext.toLowerCase()}`;
 
-        item.innerHTML = `
+    item.innerHTML = `
     <div class="cdl-file-info">
       <span class="cdl-file-badge ${extClass}">${ext}</span>
       <span class="cdl-file-name" title="${file.text}">${displayName}</span>
@@ -124,12 +130,12 @@ window.CanvasDownloaderUI.renderFileList = function (currentFiles, onDownloadCli
     </button>
   `;
 
-        // Individual download button
-        item.querySelector('.cdl-file-download-btn').addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (onDownloadClick) onDownloadClick(file, item);
-        });
-
-        fileList.appendChild(item);
+    // Individual download button
+    item.querySelector('.cdl-file-download-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (onDownloadClick) onDownloadClick(file, item);
     });
+
+    fileList.appendChild(item);
+  });
 };

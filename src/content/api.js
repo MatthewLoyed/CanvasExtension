@@ -427,7 +427,7 @@ function detectFileType(href, linkElement, extensions) {
  * @param {function|null} onProgress - Optional callback({current, total, pageTitle}) for progress.
  * @returns {Promise<Array>} Array of discovered file objects with source metadata.
  */
-window.CanvasDownloader.deepScanPages = async function (courseId, pageItems, delayMs = 800, onProgress = null) {
+window.CanvasDownloader.deepScanPages = async function (courseId, pageItems, delayMs = 800, onProgress = null, onFilesFound = null) {
     const allFiles = [];
 
     for (let i = 0; i < pageItems.length; i++) {
@@ -453,16 +453,24 @@ window.CanvasDownloader.deepScanPages = async function (courseId, pageItems, del
         const files = window.CanvasDownloader.parsePageBodyForFiles(pageData.body, baseUrl);
 
         // Enrich each file with source metadata
+        const enrichedFiles = [];
         for (const file of files) {
-            allFiles.push({
+            enrichedFiles.push({
                 ...file,
                 href: window.CanvasDownloader.transformDownloadUrl(file.href).url,
                 source: 'deep',
                 parentPage: pageItem.title,
                 moduleName: pageItem.moduleName,
                 moduleId: pageItem.moduleId,
-                courseName: pageItem.moduleName // Use module name as course context
+                courseName: pageItem.moduleName
             });
+        }
+
+        allFiles.push(...enrichedFiles);
+
+        // Stream: notify caller immediately when new files are found
+        if (enrichedFiles.length > 0 && onFilesFound) {
+            onFilesFound(enrichedFiles);
         }
 
         // Rate-limit delay between page fetches

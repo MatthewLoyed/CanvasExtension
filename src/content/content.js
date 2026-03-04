@@ -255,6 +255,71 @@ if (window.__cdlContentScriptLoaded) {
     }, 500);
   }
 
+  /**
+   * Start automatic deep scan for the current course.
+   * Streams results into foundResources and broadcasts updates after each page.
+   */
+  function startDeepScan() {
+    const courseId = window.CanvasDownloader.extractCourseId();
+    if (!courseId) return;
+    if (isDeepScraping) return; // Already running
+
+    isDeepScraping = true;
+
+    // Notify UI: scanning started
+    document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
+      detail: { status: 'scanning', current: 0, total: 0 }
+    }));
+
+    window.CanvasDownloader.fetchCourseModules(courseId).then(modules => {
+      const categories = window.CanvasDownloader.categorizeModuleItems(modules);
+
+      if (categories.pages.length === 0) {
+        isDeepScraping = false;
+        document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
+          detail: { status: 'done', found: 0 }
+        }));
+        return;
+      }
+
+      return window.CanvasDownloader.deepScanPages(
+        courseId,
+        categories.pages,
+        800,
+        // onProgress: update scanning indicator
+        ({ current, total, pageTitle }) => {
+          document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
+            detail: { status: 'scanning', current, total, pageTitle }
+          }));
+        },
+        // onFilesFound: stream new files into foundResources
+        (newFiles) => {
+          const courseName = getCourseName();
+          for (const file of newFiles) {
+            if (!foundResources.has(file.href)) {
+              foundResources.set(file.href, {
+                ...file,
+                courseName: courseName
+              });
+            }
+          }
+          sendUpdate();
+        }
+      );
+    }).then(() => {
+      isDeepScraping = false;
+      document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
+        detail: { status: 'done', found: foundResources.size }
+      }));
+    }).catch(err => {
+      console.error('[Canvas Downloader] Deep scan error:', err);
+      isDeepScraping = false;
+      document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
+        detail: { status: 'error', error: err.toString() }
+      }));
+    });
+  }
+
   function init() {
     // Guard: Only run if this looks like a Canvas page
     if (!isCanvasPage()) {
@@ -285,6 +350,9 @@ if (window.__cdlContentScriptLoaded) {
     if (observer) observer.disconnect();
     observer = new MutationObserver(() => debouncedScrape());
     observer.observe(document.body, { childList: true, subtree: true });
+
+    // Auto-start deep scan after a short delay to let surface scrape finish
+    setTimeout(() => startDeepScan(), 3000);
   }
 
   init();
