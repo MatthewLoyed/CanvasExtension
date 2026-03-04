@@ -451,6 +451,57 @@ if (window.__cdlContentScriptLoaded) {
       return true;
     }
 
+    if (msg.action === 'deep_scan_test') {
+      const courseId = window.CanvasDownloader.extractCourseId();
+      console.log('[Deep Scan Test] Course ID:', courseId);
+      if (!courseId) {
+        sendResponse({ success: false, error: 'No course ID found' });
+        return;
+      }
+
+      (async () => {
+        try {
+          // Phase 1: Fetch modules and categorize
+          console.log('[Deep Scan Test] === Phase 1: Fetching Modules ===');
+          const modules = await window.CanvasDownloader.fetchCourseModules(courseId, (page) => {
+            console.log(`[Deep Scan Test] Fetching modules page ${page}...`);
+          });
+          console.log(`[Deep Scan Test] Modules found: ${modules.length}`);
+
+          const categories = window.CanvasDownloader.categorizeModuleItems(modules);
+          console.log(`[Deep Scan Test] Direct files: ${categories.files.length}, Pages: ${categories.pages.length}, Skipped: ${categories.skipped.length}`);
+
+          // Phase 2: Deep scan pages for embedded files
+          console.log('[Deep Scan Test] === Phase 2: Scanning Pages ===');
+          const deepFiles = await window.CanvasDownloader.deepScanPages(
+            courseId,
+            categories.pages,
+            800,
+            ({ current, total, pageTitle }) => {
+              console.log(`[Deep Scan Test] Scanning page ${current}/${total}: "${pageTitle}"`);
+            }
+          );
+
+          console.log(`[Deep Scan Test] === Results ===`);
+          console.log(`[Deep Scan Test] Deep-found files: ${deepFiles.length}`);
+          deepFiles.forEach(f => console.log(`  📄 [${f.moduleName}] ${f.text} (${f.type}) — from "${f.parentPage}"`));
+
+          sendResponse({
+            success: true,
+            modules: modules.length,
+            directFiles: categories.files.length,
+            pages: categories.pages.length,
+            deepFiles: deepFiles.length,
+            deepFilesList: deepFiles.map(f => ({ text: f.text, type: f.type, parentPage: f.parentPage, href: f.href }))
+          });
+        } catch (err) {
+          console.error('[Deep Scan Test] Error:', err);
+          sendResponse({ success: false, error: err.toString() });
+        }
+      })();
+      return true;
+    }
+
     if (msg.action === 'get_files') {
       sendResponse({
         files: Array.from(foundResources.values()),
