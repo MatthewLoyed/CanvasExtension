@@ -12,6 +12,25 @@ if (window.__cdlContentScriptLoaded) {
   let scrapeInterval = null;
   let port = null;
 
+  /**
+   * Deep scan cache helpers — uses sessionStorage to survive page reloads.
+   * Canvas does full page navigations between sections (not SPA).
+   */
+  function getCacheKey(courseId) { return `cdl-deepscan-${courseId}`; }
+
+  function getCachedDeepScan(courseId) {
+    try {
+      const data = sessionStorage.getItem(getCacheKey(courseId));
+      return data ? JSON.parse(data) : null;
+    } catch (e) { return null; }
+  }
+
+  function setCachedDeepScan(courseId, files) {
+    try {
+      sessionStorage.setItem(getCacheKey(courseId), JSON.stringify(files));
+    } catch (e) { /* Storage full — fail silently */ }
+  }
+
   // Config
   const DELAY_MS = 800; // Rate limiting delay
   const TARGET_EXTENSIONS = ['.pdf', '.docx', '.pptx', '.zip', '.xlsx', '.txt', '.doc', '.ppt', '.xls'];
@@ -256,13 +275,45 @@ if (window.__cdlContentScriptLoaded) {
   }
 
   /**
+   * Check if the current page is a modules page where deep scan is meaningful.
+   * Only run deep scan on course home pages or explicit /modules pages.
+   * 
+   * @returns {boolean}
+   */
+  function isModulesPage() {
+    const path = window.location.pathname;
+    // Match /courses/123 (home) or /courses/123/modules (explicit modules page)
+    // Do NOT match /courses/123/grades, /courses/123/assignments, etc.
+    return /^\/courses\/\d+\/?$/.test(path) || /^\/courses\/\d+\/modules/.test(path);
+  }
+
+  /**
    * Start automatic deep scan for the current course.
    * Streams results into foundResources and broadcasts updates after each page.
+   * Only runs on module pages (course home or /modules).
    */
   function startDeepScan() {
+    if (!isModulesPage()) return; // Only scan on module pages
+
     const courseId = window.CanvasDownloader.extractCourseId();
     if (!courseId) return;
     if (isDeepScraping) return; // Already running
+
+    // Check cache first — instant restore if we've already scanned this course
+    const cachedFiles = getCachedDeepScan(courseId);
+    if (cachedFiles && cachedFiles.length > 0) {
+      const courseName = getCourseName();
+      for (const file of cachedFiles) {
+        if (!foundResources.has(file.href)) {
+          foundResources.set(file.href, { ...file, courseName });
+        }
+      }
+      sendUpdate();
+      document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
+        detail: { status: 'done', found: foundResources.size, cached: true }
+      }));
+      return;
+    }
 
     isDeepScraping = true;
 
@@ -271,11 +322,14 @@ if (window.__cdlContentScriptLoaded) {
       detail: { status: 'scanning', current: 0, total: 0 }
     }));
 
+    const allDeepFiles = []; // Collect for caching
+
     window.CanvasDownloader.fetchCourseModules(courseId).then(modules => {
       const categories = window.CanvasDownloader.categorizeModuleItems(modules);
 
       if (categories.pages.length === 0) {
         isDeepScraping = false;
+        setCachedDeepScan(courseId, []);
         document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
           detail: { status: 'done', found: 0 }
         }));
@@ -296,11 +350,9 @@ if (window.__cdlContentScriptLoaded) {
         (newFiles) => {
           const courseName = getCourseName();
           for (const file of newFiles) {
+            allDeepFiles.push(file); // Collect for cache
             if (!foundResources.has(file.href)) {
-              foundResources.set(file.href, {
-                ...file,
-                courseName: courseName
-              });
+              foundResources.set(file.href, { ...file, courseName });
             }
           }
           sendUpdate();
@@ -308,6 +360,8 @@ if (window.__cdlContentScriptLoaded) {
       );
     }).then(() => {
       isDeepScraping = false;
+      // Cache results for this course
+      setCachedDeepScan(courseId, allDeepFiles);
       document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
         detail: { status: 'done', found: foundResources.size }
       }));
@@ -351,8 +405,8 @@ if (window.__cdlContentScriptLoaded) {
     observer = new MutationObserver(() => debouncedScrape());
     observer.observe(document.body, { childList: true, subtree: true });
 
-    // Auto-start deep scan after a short delay to let surface scrape finish
-    setTimeout(() => startDeepScan(), 3000);
+    // Auto-start deep scan after surface scrape finishes
+    setTimeout(() => startDeepScan(), 1000);
   }
 
   init();

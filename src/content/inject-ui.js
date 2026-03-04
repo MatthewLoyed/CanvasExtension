@@ -372,6 +372,15 @@
 
         if (detail.status === 'scanning') {
             scanStatus.style.display = 'inline-flex';
+            // Ensure toolbar is visible and animated during scanning
+            const toolbar = document.getElementById('cdl-toolbar');
+            if (toolbar && toolbar.style.display === 'none') {
+                toolbar.style.display = 'inline-flex';
+                // Re-trigger entrance animation
+                toolbar.style.animation = 'none';
+                toolbar.offsetHeight; // Force reflow
+                toolbar.style.animation = '';
+            }
             if (detail.total > 0) {
                 scanText.textContent = `Scanning ${detail.current}/${detail.total}...`;
             } else {
@@ -386,7 +395,7 @@
     // Initialize
     // ============================================================
     function init() {
-        // Wait a bit for content.js to finish its initial scrape
+        // Short delay to let DOM settle
         setTimeout(() => {
             injectToolbar();
             injectInlineButtons();
