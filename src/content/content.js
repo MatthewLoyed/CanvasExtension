@@ -6,6 +6,7 @@ if (window.__cdlContentScriptLoaded) {
 
   // State
   let isDeepScraping = false;
+  let scanGeneration = 0; // Incremented on each rescan to invalidate stale scan callbacks
   const foundResources = new Map(); // key: href, value: resource object
   const visitedPages = new Set();
   const pageQueue = [];
@@ -322,39 +323,49 @@ if (window.__cdlContentScriptLoaded) {
     }
 
     isDeepScraping = true;
+    const myScanGen = scanGeneration; // Capture current generation for this scan
 
     const allDeepFiles = []; // Collect for caching
 
     window.CanvasDownloader.fetchCourseModules(courseId).then(modules => {
+      // If a newer scan was triggered, silently abandon this one
+      if (myScanGen !== scanGeneration) return;
+
       const categories = window.CanvasDownloader.categorizeModuleItems(modules);
 
       if (categories.pages.length === 0) {
-        isDeepScraping = false;
+        if (myScanGen === scanGeneration) isDeepScraping = false;
         setCachedDeepScan(courseId, []);
         // No pages to scan — finish silently without ever showing "Scanning..."
-        document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
-          detail: { status: 'done', found: 0 }
-        }));
+        if (myScanGen === scanGeneration) {
+          document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
+            detail: { status: 'done', found: 0 }
+          }));
+        }
         return;
       }
 
       // Only show scanning indicator when we actually have pages to scan
-      document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
-        detail: { status: 'scanning', current: 0, total: categories.pages.length }
-      }));
+      if (myScanGen === scanGeneration) {
+        document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
+          detail: { status: 'scanning', current: 0, total: categories.pages.length }
+        }));
+      }
 
       return window.CanvasDownloader.deepScanPages(
         courseId,
         categories.pages,
-        800,
-        // onProgress: update scanning indicator
+        150,
+        // onProgress: update scanning indicator (only if still current scan)
         ({ current, total, pageTitle }) => {
+          if (myScanGen !== scanGeneration) return;
           document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
             detail: { status: 'scanning', current, total, pageTitle }
           }));
         },
-        // onFilesFound: stream new files into foundResources
+        // onFilesFound: stream new files into foundResources (only if still current scan)
         (newFiles) => {
+          if (myScanGen !== scanGeneration) return;
           const courseName = getCourseName();
           for (const file of newFiles) {
             allDeepFiles.push(file); // Collect for cache
@@ -366,6 +377,8 @@ if (window.__cdlContentScriptLoaded) {
         }
       );
     }).then(() => {
+      // Only finalize if this scan is still the current one
+      if (myScanGen !== scanGeneration) return;
       isDeepScraping = false;
       // Cache results for this course
       setCachedDeepScan(courseId, allDeepFiles);
@@ -373,6 +386,7 @@ if (window.__cdlContentScriptLoaded) {
         detail: { status: 'done', found: foundResources.size }
       }));
     }).catch(err => {
+      if (myScanGen !== scanGeneration) return;
       console.error('[Canvas Downloader] Deep scan error:', err);
       isDeepScraping = false;
       document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
@@ -423,7 +437,7 @@ if (window.__cdlContentScriptLoaded) {
       }
     }
 
-    setTimeout(() => startDeepScan(), 1000);
+    setTimeout(() => startDeepScan(), 300);
   }
 
   init();
@@ -431,26 +445,33 @@ if (window.__cdlContentScriptLoaded) {
   // Listen for manual re-scan trigger from inject-ui.js
   document.addEventListener('cdl-trigger-rescan', () => {
     const courseId = window.CanvasDownloader.extractCourseId();
-    if (!courseId || isDeepScraping) return;
+    if (!courseId) return;
 
-    // Immediately show "scanning" so toolbar doesn't collapse during cache clear
+    // Invalidate any running scan by bumping the generation counter
+    scanGeneration++;
+    isDeepScraping = false; // Allow a new scan to start
+
+    // Immediately show "scanning" so toolbar doesn't collapse during clear
     document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
       detail: { status: 'scanning' }
     }));
 
-    // Clear cache for this course
+    // Clear deep scan cache for this course
     sessionStorage.removeItem(getCacheKey(courseId));
 
-    // Clear previously found deep scan files from UI
-    for (const [key, file] of foundResources.entries()) {
-      if (file.source === 'deep') {
-        foundResources.delete(key);
-      }
-    }
-    sendUpdate(); // Update UI to show count without deep files
+    // Clear ALL found resources (surface + deep) for a true full rescan
+    foundResources.clear();
+    sendUpdate(); // Update UI to show 0 files (toolbar stays via scanning state)
 
-    // Start fresh scan
-    startDeepScan();
+    // Small delay so the browser repaints the cleared list before re-populating
+    setTimeout(() => {
+      // Re-run surface scrape on the current page
+      scrapeRoot(document, window.location.href, false);
+      sendUpdate();
+
+      // Then start fresh deep scan
+      startDeepScan();
+    }, 300);
   });
 
   // ============================================================

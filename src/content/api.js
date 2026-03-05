@@ -390,7 +390,7 @@ window.CanvasDownloader.fetchCourseModules = async function (courseId, onProgres
     const origin = window.location.origin;
     const url = `${origin}/api/v1/courses/${courseId}/modules?include[]=items&include[]=content_details&per_page=50`;
 
-    const modules = await window.CanvasDownloader.fetchCanvasApi(url, 800, onProgress);
+    const modules = await window.CanvasDownloader.fetchCanvasApi(url, 150, onProgress);
     return modules;
 };
 
@@ -578,96 +578,132 @@ function detectFileType(href, linkElement, extensions) {
 }
 
 /**
+ * Resolve unknown file types in parallel via Canvas API.
+ * For files detected as generic 'file', fetches metadata to get the real extension and display name.
+ *
+ * @param {Array} enrichedFiles - Array of enriched file objects to resolve.
+ * @returns {Promise<void>} Mutates the file objects in place.
+ */
+async function resolveFileTypesBatch(enrichedFiles) {
+    const unknowns = enrichedFiles.filter(f => {
+        if (f.type !== 'file') return false;
+        const match = f._originalHref?.match(/\/files\/(\d+)/) || f.href.match(/\/files\/(\d+)/);
+        return !!match;
+    });
+
+    if (unknowns.length === 0) return;
+
+    await Promise.all(unknowns.map(async (enriched) => {
+        const fileIdMatch = (enriched._originalHref || enriched.href).match(/\/files\/(\d+)/);
+        if (!fileIdMatch) return;
+
+        try {
+            const apiUrl = `${window.location.origin}/api/v1/files/${fileIdMatch[1]}`;
+            const resp = await fetch(apiUrl, { credentials: 'include' });
+            if (resp.ok) {
+                const data = await resp.json();
+                const mimeExt = window.CanvasDownloader.mimeToExtension(data['content-type']);
+                if (mimeExt) {
+                    enriched.type = mimeExt;
+                }
+                if (enriched.type === 'file' && data.filename) {
+                    const fnMatch = data.filename.match(/\.([a-z0-9]{2,5})$/i);
+                    if (fnMatch) enriched.type = '.' + fnMatch[1].toLowerCase();
+                }
+                if (data.display_name && window.CanvasDownloader.isGenericLinkText(enriched.text)) {
+                    enriched.text = data.display_name;
+                }
+            }
+        } catch (e) {
+            // API failed — keep 'file' type, not critical
+        }
+    }));
+}
+
+/**
  * Orchestrate deep scanning all Page-type module items.
- * Fetches each page's body, parses for files, and collects all results.
+ * Fetches pages in parallel batches for speed, with rate-limit awareness.
  * 
  * @param {string} courseId - The Canvas course ID.
  * @param {Array} pageItems - Array of Page-type module items from categorizeModuleItems().
- * @param {number} delayMs - Delay between page fetches (default 800ms).
+ * @param {number} delayMs - Delay between batch cycles (default 150ms). Kept for rate-limit safety.
  * @param {function|null} onProgress - Optional callback({current, total, pageTitle}) for progress.
+ * @param {function|null} onFilesFound - Optional callback(newFiles) for streaming results.
  * @returns {Promise<Array>} Array of discovered file objects with source metadata.
  */
-window.CanvasDownloader.deepScanPages = async function (courseId, pageItems, delayMs = 800, onProgress = null, onFilesFound = null) {
+window.CanvasDownloader.deepScanPages = async function (courseId, pageItems, delayMs = 150, onProgress = null, onFilesFound = null) {
+    const CONCURRENCY = 3; // Fetch 3 pages at a time
     const allFiles = [];
+    let completed = 0;
 
-    for (let i = 0; i < pageItems.length; i++) {
-        const pageItem = pageItems[i];
-
-        if (onProgress) {
-            onProgress({ current: i + 1, total: pageItems.length, pageTitle: pageItem.title });
-        }
-
-        // Extract the page_url slug from the module item
+    /**
+     * Process a single page item — fetch body, parse for files, resolve types.
+     * @returns {Promise<Array>} Enriched files found on this page.
+     */
+    async function processPage(pageItem) {
         const pageUrl = pageItem.page_url;
         if (!pageUrl) {
             console.warn(`[Canvas Downloader] Page item "${pageItem.title}" has no page_url, skipping.`);
-            continue;
+            return [];
         }
 
-        // Fetch the page body
         const pageData = await window.CanvasDownloader.fetchPageBody(courseId, pageUrl);
-        if (!pageData || !pageData.body) continue;
+        if (!pageData || !pageData.body) return [];
 
-        // Parse the body for file links
         const baseUrl = `${window.location.origin}/courses/${courseId}/pages/${pageUrl}`;
         const files = window.CanvasDownloader.parsePageBodyForFiles(pageData.body, baseUrl);
 
         // Enrich each file with source metadata
-        const enrichedFiles = [];
-        for (const file of files) {
-            const enriched = {
-                ...file,
-                href: window.CanvasDownloader.transformDownloadUrl(file.href).url,
-                source: 'deep',
-                parentPage: pageItem.title,
-                moduleName: pageItem.moduleName,
-                moduleId: pageItem.moduleId,
-                courseName: pageItem.moduleName
-            };
+        const enrichedFiles = files.map(file => ({
+            ...file,
+            _originalHref: file.href, // Keep original for type resolution
+            href: window.CanvasDownloader.transformDownloadUrl(file.href).url,
+            source: 'deep',
+            parentPage: pageItem.title,
+            moduleName: pageItem.moduleName,
+            moduleId: pageItem.moduleId,
+            courseName: pageItem.moduleName
+        }));
 
-            // Resolve unknown types at scan time via Canvas API
-            // This ensures the UI shows the correct badge (PDF, DOCX, etc.) immediately
-            if (enriched.type === 'file') {
-                const fileIdMatch = file.href.match(/\/files\/(\d+)/);
-                if (fileIdMatch) {
-                    try {
-                        const apiUrl = `${window.location.origin}/api/v1/files/${fileIdMatch[1]}`;
-                        const resp = await fetch(apiUrl, { credentials: 'include' });
-                        if (resp.ok) {
-                            const data = await resp.json();
-                            // Resolve type from content-type
-                            const mimeExt = window.CanvasDownloader.mimeToExtension(data['content-type']);
-                            if (mimeExt) {
-                                enriched.type = mimeExt;
-                            }
-                            // Fallback: extract extension from API filename
-                            if (enriched.type === 'file' && data.filename) {
-                                const fnMatch = data.filename.match(/\.([a-z0-9]{2,5})$/i);
-                                if (fnMatch) enriched.type = '.' + fnMatch[1].toLowerCase();
-                            }
-                            // Improve display name if ours is generic
-                            if (data.display_name && window.CanvasDownloader.isGenericLinkText(enriched.text)) {
-                                enriched.text = data.display_name;
-                            }
-                        }
-                    } catch (e) {
-                        // API failed — keep 'file' type, not critical
-                    }
+        // Resolve unknown types in parallel for this batch of files
+        await resolveFileTypesBatch(enrichedFiles);
+
+        // Clean up internal property
+        enrichedFiles.forEach(f => delete f._originalHref);
+
+        return enrichedFiles;
+    }
+
+    // Process pages in parallel batches of CONCURRENCY
+    for (let i = 0; i < pageItems.length; i += CONCURRENCY) {
+        const batch = pageItems.slice(i, i + CONCURRENCY);
+
+        // Report progress for the first item in this batch
+        if (onProgress) {
+            onProgress({ current: i + 1, total: pageItems.length, pageTitle: batch[0].title });
+        }
+
+        // Fetch all pages in this batch concurrently
+        const batchResults = await Promise.all(batch.map(processPage));
+
+        // Collect results and stream to caller
+        for (const enrichedFiles of batchResults) {
+            completed++;
+            if (enrichedFiles.length > 0) {
+                allFiles.push(...enrichedFiles);
+                if (onFilesFound) {
+                    onFilesFound(enrichedFiles);
                 }
             }
-
-            enrichedFiles.push(enriched);
         }
 
-        allFiles.push(...enrichedFiles);
-
-        // Stream: notify caller immediately when new files are found
-        if (enrichedFiles.length > 0 && onFilesFound) {
-            onFilesFound(enrichedFiles);
+        // Update progress after batch completes
+        if (onProgress) {
+            onProgress({ current: Math.min(i + CONCURRENCY, pageItems.length), total: pageItems.length, pageTitle: batch[batch.length - 1].title });
         }
 
-        // Rate-limit delay between page fetches
-        if (i < pageItems.length - 1) {
+        // Small delay between batches for rate-limit safety
+        if (i + CONCURRENCY < pageItems.length) {
             await new Promise(resolve => setTimeout(resolve, delayMs));
         }
     }

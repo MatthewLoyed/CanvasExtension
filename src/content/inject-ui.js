@@ -99,12 +99,17 @@
             downloadAll();
         });
 
-        // Re-scan Button: Trigger a manual deep scan
+        // Re-scan Button: Trigger a full rescan
         const rescanBtn = document.getElementById('cdl-rescan-btn');
         if (rescanBtn) {
             rescanBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                // Send event to content.js to bypass cache and rescan
+                // Prevent clicking while a scan is already in progress
+                if (rescanBtn.classList.contains('is-spinning')) return;
+                // Immediately clear the file list in the UI so the user sees it reset
+                currentFiles = [];
+                window.CanvasDownloaderUI.renderFileList(currentFiles, downloadSingle);
+                // Send event to content.js to bypass cache and rescan everything
                 document.dispatchEvent(new CustomEvent('cdl-trigger-rescan'));
             });
         }
@@ -198,6 +203,9 @@
         const btnGroup = document.getElementById('cdl-button-group');
         const progressBar = document.getElementById('cdl-loading-bar');
 
+        // Snapshot files at click time — protects against mid-scan list changes
+        const filesToDownload = [...currentFiles];
+
         // Enter loading state
         btnGroup.classList.add('is-loading');
         progressBar.style.width = '0%';
@@ -210,7 +218,7 @@
         // Send batch to content.js for URL resolution → then service worker for download
         sendToContentScript({
             action: 'resolve_and_download_batch',
-            files: currentFiles
+            files: filesToDownload
         }, (response) => {
             if (response && response.success) {
                 // Initial progress update
@@ -427,7 +435,7 @@
     // Initialize
     // ============================================================
     function init() {
-        // Short delay to let DOM settle
+        // Minimal delay — document_idle already guarantees DOM readiness
         setTimeout(() => {
             injectToolbar();
             injectInlineButtons();
@@ -440,7 +448,7 @@
                     injectInlineButtons();
                 }
             });
-        }, 500);
+        }, 50);
 
         // Periodically check for new links that might have been rendered
         setInterval(injectInlineButtons, 2000);
