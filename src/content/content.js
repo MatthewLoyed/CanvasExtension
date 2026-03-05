@@ -284,7 +284,7 @@ if (window.__cdlContentScriptLoaded) {
     const path = window.location.pathname;
     // Match /courses/123 (home) or /courses/123/modules (explicit modules page)
     // Do NOT match /courses/123/grades, /courses/123/assignments, etc.
-    return /^\/courses\/\d+\/?$/.test(path) || /^\/courses\/\d+\/modules/.test(path);
+    return /^\/courses\/\d+\/?$/.test(path) || /^\/courses\/\d+\/modules\/?$/.test(path);
   }
 
   /**
@@ -317,11 +317,6 @@ if (window.__cdlContentScriptLoaded) {
 
     isDeepScraping = true;
 
-    // Notify UI: scanning started
-    document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
-      detail: { status: 'scanning', current: 0, total: 0 }
-    }));
-
     const allDeepFiles = []; // Collect for caching
 
     window.CanvasDownloader.fetchCourseModules(courseId).then(modules => {
@@ -330,11 +325,17 @@ if (window.__cdlContentScriptLoaded) {
       if (categories.pages.length === 0) {
         isDeepScraping = false;
         setCachedDeepScan(courseId, []);
+        // No pages to scan — finish silently without ever showing "Scanning..."
         document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
           detail: { status: 'done', found: 0 }
         }));
         return;
       }
+
+      // Only show scanning indicator when we actually have pages to scan
+      document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
+        detail: { status: 'scanning', current: 0, total: categories.pages.length }
+      }));
 
       return window.CanvasDownloader.deepScanPages(
         courseId,

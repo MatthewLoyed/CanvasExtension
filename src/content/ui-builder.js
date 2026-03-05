@@ -23,6 +23,7 @@ window.CanvasDownloaderUI.createToolbar = function (iconUrl) {
   const toolbar = document.createElement('div');
   toolbar.id = 'cdl-toolbar';
   toolbar.className = 'cdl-toolbar';
+  toolbar.style.display = 'none'; // Start hidden; shown when files found or scanning begins
 
   toolbar.innerHTML = `
       <div class="cdl-toolbar-inner">

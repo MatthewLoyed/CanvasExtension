@@ -403,6 +403,9 @@
             scanStatus.style.display = 'none';
             const rescanBtn = document.getElementById('cdl-rescan-btn');
             if (rescanBtn) rescanBtn.classList.remove('is-spinning');
+            // Re-render file list to re-evaluate toolbar visibility
+            // (hides toolbar if scan completed with 0 files)
+            window.CanvasDownloaderUI.renderFileList(currentFiles, downloadSingle);
         }
     });
 

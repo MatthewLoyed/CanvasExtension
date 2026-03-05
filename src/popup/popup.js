@@ -45,7 +45,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     statusIcon.classList.add('active');
                     statusIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />`;
-                    statusText.innerText = "Extension is active! Look for the 'Download All' button at the top of your Canvas page or next to individual files.";
+
+                    const fileCount = response.fileCount || 0;
+                    if (fileCount > 0) {
+                        statusText.innerText = `Extension is active! Found ${fileCount} file${fileCount === 1 ? '' : 's'} on this page. Look for the 'Download All' button.`;
+                    } else {
+                        statusText.innerText = "Extension is active! No downloadable files found on this page. Navigate to a course modules page to find files.";
+                    }
                 }
             });
         } catch (e) {
