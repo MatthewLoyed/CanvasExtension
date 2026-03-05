@@ -11,7 +11,8 @@ window.CanvasDownloaderUI.getSafeDisplayName = function (text, extension = ".pdf
   clean = clean.replace(/[\x00-\x1F\x7F\u00A0]/g, '_');
   clean = clean.trim().replace(/\.+$/, '');
   if (clean.length > 120) clean = clean.substring(0, 120).trim();
-  if (extension) {
+  // Don't append extension if it's empty or 'file' (unknown type)
+  if (extension && extension !== 'file') {
     const ext = extension.startsWith('.') ? extension : `.${extension}`;
     if (!clean.toLowerCase().endsWith(ext.toLowerCase())) clean += ext;
   }
@@ -122,8 +123,12 @@ window.CanvasDownloaderUI.renderFileList = function (currentFiles, onDownloadCli
     item.className = 'cdl-file-item';
     item.setAttribute('data-href', file.href);
 
-    const ext = (file.type || 'file').replace('.', '').toUpperCase();
-    const displayName = window.CanvasDownloaderUI.getSafeDisplayName(file.text, file.type);
+    // Prefer resolvedType (from Canvas API) over original type
+    const effectiveType = file.resolvedType || file.type || 'file';
+    const ext = effectiveType.replace('.', '').toUpperCase();
+    // Don't append '.file' to display names — pass empty ext for unknown types
+    const displayExt = (effectiveType === 'file') ? '' : effectiveType;
+    const displayName = window.CanvasDownloaderUI.getSafeDisplayName(file.resolvedName || file.text, displayExt);
     const extClass = `cdl-badge-${ext.toLowerCase()}`;
 
     item.innerHTML = `

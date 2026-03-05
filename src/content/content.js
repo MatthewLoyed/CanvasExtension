@@ -455,10 +455,10 @@ if (window.__cdlContentScriptLoaded) {
     chrome.runtime.sendMessage({
       action: 'download_file',
       url: resolvedUrl,
-      filename: file.text,
+      filename: file.resolvedName || file.text,
       courseName: file.courseName,
       originalHref: file.href,
-      type: file.type
+      type: file.resolvedType || file.type
     });
     return { success: true };
   }
@@ -472,10 +472,10 @@ if (window.__cdlContentScriptLoaded) {
     const resolvedFiles = await Promise.all(files.map(file =>
       window.CanvasDownloader.resolveFileUrl(file).then(resolvedUrl => ({
         url: resolvedUrl,
-        filename: file.text,
+        filename: file.resolvedName || file.text,
         courseName: file.courseName,
         originalHref: file.href,
-        type: file.type
+        type: file.resolvedType || file.type
       }))
     ));
 

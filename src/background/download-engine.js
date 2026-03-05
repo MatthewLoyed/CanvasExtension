@@ -119,7 +119,10 @@ class DownloadQueue {
         // Notify: file is now downloading
         this._sendFileStatus(item.originalHref, 'loading');
 
-        const safeName = getSafeFilename(item.filename, item.type);
+        // When type is 'file' (unknown), don't force an extension — let the
+        // browser/server determine it from Content-Disposition or URL.
+        const effectiveType = (item.type && item.type !== 'file') ? item.type : '';
+        const safeName = getSafeFilename(item.filename, effectiveType);
         const safeCourse = getSafeFilename(item.courseName || "General", "");
 
         let useFolder = false;
@@ -141,8 +144,8 @@ class DownloadQueue {
                 const err = chrome.runtime.lastError;
                 if (err) {
                     if (!isRetry) {
-                        // Retry with fallback filename
-                        const cleanExt = (item.type && item.type.startsWith('.')) ? item.type : '.file';
+                        // Retry with fallback filename (skip .file extension)
+                        const cleanExt = (item.type && item.type.startsWith('.')) ? item.type : '';
                         const fallbackName = `Canvas_File_${Date.now()}_${Math.floor(Math.random() * 1000)}${cleanExt}`;
                         const fallbackPath = useFolder ? `Canvas_Resources/${safeCourse}/fallback/${fallbackName}` : `fallback/${fallbackName}`;
                         attemptDownload(url, fallbackPath, true);

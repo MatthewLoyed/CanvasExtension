@@ -85,6 +85,33 @@ window.CanvasDownloader.extractFilenameFromUrl = function (href) {
     }
 };
 
+/**
+ * Map a MIME Content-Type to a file extension.
+ * Used to resolve the actual type when the parser only detected 'file'.
+ *
+ * @param {string} contentType - The Content-Type header value (e.g., 'application/pdf').
+ * @returns {string|null} The extension (e.g., '.pdf') or null if unmapped.
+ */
+window.CanvasDownloader.mimeToExtension = function (contentType) {
+    if (!contentType) return null;
+    const mime = contentType.split(';')[0].trim().toLowerCase();
+
+    const MIME_MAP = {
+        'application/pdf': '.pdf',
+        'application/msword': '.doc',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+        'application/vnd.ms-powerpoint': '.ppt',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+        'application/vnd.ms-excel': '.xls',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+        'application/zip': '.zip',
+        'application/x-zip-compressed': '.zip',
+        'text/plain': '.txt',
+    };
+
+    return MIME_MAP[mime] || null;
+};
+
 window.CanvasDownloader.transformDownloadUrl = function (urlStr) {
     try {
         const u = new URL(urlStr);
@@ -146,6 +173,27 @@ window.CanvasDownloader.resolveFileUrl = async function (file) {
                 const response = await fetch(apiUrl, { credentials: 'include' });
                 if (response.ok) {
                     const data = await response.json();
+
+                    // Refine type from API response when we only detected 'file'
+                    if (file.type === 'file' && data) {
+                        // Try content-type header from API response
+                        const mimeExt = window.CanvasDownloader.mimeToExtension(data['content-type']);
+                        if (mimeExt) {
+                            file.resolvedType = mimeExt;
+                        }
+                        // Also try extracting extension from the API filename
+                        if (!file.resolvedType && data.filename) {
+                            const fnMatch = data.filename.match(/\.([a-z0-9]{2,5})$/i);
+                            if (fnMatch) {
+                                file.resolvedType = '.' + fnMatch[1].toLowerCase();
+                            }
+                        }
+                        // Also update display name if ours is generic
+                        if (data.display_name && window.CanvasDownloader.isGenericLinkText(file.text)) {
+                            file.resolvedName = data.display_name;
+                        }
+                    }
+
                     if (data.url) return data.url;
                 }
             } catch (e) {
@@ -162,6 +210,13 @@ window.CanvasDownloader.resolveFileUrl = async function (file) {
             if (type && type.includes('text/html')) {
                 // Try to unpack wrapper page
                 return await window.CanvasDownloader.unpackIntermediatePage(u.href);
+            }
+            // Refine type from Content-Type header for external files
+            if (file.type === 'file' && type) {
+                const mimeExt = window.CanvasDownloader.mimeToExtension(type);
+                if (mimeExt) {
+                    file.resolvedType = mimeExt;
+                }
             }
             return u.href;
         } catch (e) {
