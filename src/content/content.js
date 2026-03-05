@@ -413,6 +413,16 @@ if (window.__cdlContentScriptLoaded) {
     observer.observe(document.body, { childList: true, subtree: true });
 
     // Auto-start deep scan after surface scrape finishes
+    if (isModulesPage()) {
+      const courseId = window.CanvasDownloader.extractCourseId();
+      // If no valid cache, signal scanning early so the toolbar doesn't flicker/hide during the 1000ms delay
+      if (courseId && !getCachedDeepScan(courseId)) {
+        document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
+          detail: { status: 'scanning' }
+        }));
+      }
+    }
+
     setTimeout(() => startDeepScan(), 1000);
   }
 
@@ -422,6 +432,11 @@ if (window.__cdlContentScriptLoaded) {
   document.addEventListener('cdl-trigger-rescan', () => {
     const courseId = window.CanvasDownloader.extractCourseId();
     if (!courseId || isDeepScraping) return;
+
+    // Immediately show "scanning" so toolbar doesn't collapse during cache clear
+    document.dispatchEvent(new CustomEvent('cdl-deep-scan-status', {
+      detail: { status: 'scanning' }
+    }));
 
     // Clear cache for this course
     sessionStorage.removeItem(getCacheKey(courseId));
@@ -469,7 +484,7 @@ if (window.__cdlContentScriptLoaded) {
    * @returns {Promise<{success: boolean, resolved: number, failed: number}>}
    */
   async function resolveAndDownloadBatch(files) {
-    console.log(`[CDL] Batch resolve: ${files.length} files`);
+    if (window.CanvasDownloader.DEBUG) console.log(`[CDL] Batch resolve: ${files.length} files`);
 
     const resolvedFiles = await Promise.all(files.map(async (file, i) => {
       const resolvedUrl = await window.CanvasDownloader.resolveFileUrl(file);
@@ -481,9 +496,9 @@ if (window.__cdlContentScriptLoaded) {
         type: file.resolvedType || file.type
       };
       if (!resolvedUrl) {
-        console.warn(`[CDL] ❌ RESOLVE FAILED [${i}]: "${file.text}" → ${file.href}`);
+        if (window.CanvasDownloader.DEBUG) console.warn(`[CDL] ❌ RESOLVE FAILED [${i}]: "${file.text}" → ${file.href}`);
       } else {
-        console.log(`[CDL] ✅ Resolved [${i}]: "${result.filename}" (${result.type}) → ${resolvedUrl.substring(0, 80)}...`);
+        if (window.CanvasDownloader.DEBUG) console.log(`[CDL] ✅ Resolved [${i}]: "${result.filename}" (${result.type}) → ${resolvedUrl.substring(0, 80)}...`);
       }
       return result;
     }));
@@ -491,7 +506,7 @@ if (window.__cdlContentScriptLoaded) {
     const validFiles = resolvedFiles.filter(f => f.url);
     const failedFiles = resolvedFiles.filter(f => !f.url);
 
-    console.log(`[CDL] Batch result: ${validFiles.length} resolved, ${failedFiles.length} failed`);
+    if (window.CanvasDownloader.DEBUG) console.log(`[CDL] Batch result: ${validFiles.length} resolved, ${failedFiles.length} failed`);
 
     // Send error status for files that failed resolution
     for (const failed of failedFiles) {

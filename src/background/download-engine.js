@@ -13,6 +13,8 @@
 // Filename Sanitization
 // ============================================================
 
+const DEBUG = false; // Toggle to true to see full download trace logs
+
 function getSafeFilename(text, extension = ".pdf") {
     if (!text) return "download" + extension;
 
@@ -135,7 +137,7 @@ class DownloadQueue {
 
         const relativePath = useFolder ? `Canvas_Resources/${safeCourse}/${safeName}` : safeName;
 
-        console.log(`[CDL download] Starting: "${item.filename}" → "${relativePath}" (type: ${item.type}, url: ${item.url.substring(0, 80)}...)`);
+        if (DEBUG) console.log(`[CDL download] Starting: "${item.filename}" → "${relativePath}" (type: ${item.type}, url: ${item.url.substring(0, 80)}...)`);
 
         const attemptDownload = (url, path, isRetry = false) => {
             chrome.downloads.download({
@@ -145,17 +147,17 @@ class DownloadQueue {
             }, (id) => {
                 const err = chrome.runtime.lastError;
                 if (err) {
-                    console.warn(`[CDL download] ${isRetry ? 'RETRY ' : ''}FAILED: "${path}" — ${err.message}`);
+                    if (DEBUG) console.warn(`[CDL download] ${isRetry ? 'RETRY ' : ''}FAILED: "${path}" — ${err.message}`);
                     if (!isRetry) {
                         // Retry with fallback filename (skip .file extension)
                         const cleanExt = (item.type && item.type.startsWith('.')) ? item.type : '';
                         const fallbackName = `Canvas_File_${Date.now()}_${Math.floor(Math.random() * 1000)}${cleanExt}`;
                         const fallbackPath = useFolder ? `Canvas_Resources/${safeCourse}/fallback/${fallbackName}` : `fallback/${fallbackName}`;
-                        console.log(`[CDL download] Retrying with fallback: "${fallbackPath}"`);
+                        if (DEBUG) console.log(`[CDL download] Retrying with fallback: "${fallbackPath}"`);
                         attemptDownload(url, fallbackPath, true);
                     } else {
                         // Double fail
-                        console.error(`[CDL download] DOUBLE FAIL: "${item.filename}" — giving up`);
+                        if (DEBUG) console.error(`[CDL download] DOUBLE FAIL: "${item.filename}" — giving up`);
                         this._sendFileStatus(item.originalHref, 'error', err.message);
                         this.errors++;
                         this.active--;
@@ -163,7 +165,7 @@ class DownloadQueue {
                         setTimeout(() => this._process(), this.delay);
                     }
                 } else {
-                    console.log(`[CDL download] SUCCESS: "${path}" (downloadId: ${id})`);
+                    if (DEBUG) console.log(`[CDL download] SUCCESS: "${path}" (downloadId: ${id})`);
                     // Success
                     this._sendFileStatus(item.originalHref, 'success');
                     this.completed++;

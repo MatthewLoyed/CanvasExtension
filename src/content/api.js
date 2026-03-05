@@ -4,6 +4,7 @@
  */
 
 window.CanvasDownloader = window.CanvasDownloader || {};
+window.CanvasDownloader.DEBUG = false; // Toggle to true to see download pipeline logs
 
 // ============================================================
 // Shared Filename Utilities
@@ -163,7 +164,7 @@ window.CanvasDownloader.resolveFileUrl = async function (file) {
 
         // Already a direct CDN link
         if (file.href.includes('canvas-user-content.com')) {
-            console.log(`[CDL resolve] CDN link, using directly: ${file.href.substring(0, 60)}`);
+            if (window.CanvasDownloader.DEBUG) console.log(`[CDL resolve] CDN link, using directly: ${file.href.substring(0, 60)}`);
             return file.href;
         }
 
@@ -195,15 +196,15 @@ window.CanvasDownloader.resolveFileUrl = async function (file) {
                     }
 
                     if (data.url) {
-                        console.log(`[CDL resolve] Canvas API OK for file ${fileId}: ${data.url.substring(0, 60)}...`);
+                        if (window.CanvasDownloader.DEBUG) console.log(`[CDL resolve] Canvas API OK for file ${fileId}: ${data.url.substring(0, 60)}...`);
                         return data.url;
                     }
-                    console.warn(`[CDL resolve] Canvas API OK but no URL in response for file ${fileId}:`, data);
+                    if (window.CanvasDownloader.DEBUG) console.warn(`[CDL resolve] Canvas API OK but no URL in response for file ${fileId}:`, data);
                 } else {
-                    console.warn(`[CDL resolve] Canvas API HTTP ${response.status} for file ${fileId}`);
+                    if (window.CanvasDownloader.DEBUG) console.warn(`[CDL resolve] Canvas API HTTP ${response.status} for file ${fileId}`);
                 }
             } catch (e) {
-                console.warn(`[CDL resolve] Canvas API fetch error for file ${fileId}:`, e.message);
+                if (window.CanvasDownloader.DEBUG) console.warn(`[CDL resolve] Canvas API fetch error for file ${fileId}:`, e.message);
             }
             return null; // Strict: if Canvas API fails, don't risk .htm
         }
@@ -212,22 +213,22 @@ window.CanvasDownloader.resolveFileUrl = async function (file) {
         // HEAD requests to external servers often time out or get blocked (CORS).
         const KNOWN_EXT = /\.(pdf|docx?|pptx?|xlsx?|zip|txt)(\?|#|$)/i;
         if (KNOWN_EXT.test(u.pathname)) {
-            console.log(`[CDL resolve] External URL has known extension, using directly: ${u.href.substring(0, 80)}`);
+            if (window.CanvasDownloader.DEBUG) console.log(`[CDL resolve] External URL has known extension, using directly: ${u.href.substring(0, 80)}`);
             return u.href;
         }
 
         // For URLs without a clear extension, do a HEAD check to see if it's a file or HTML
-        console.log(`[CDL resolve] External/non-file URL, trying HEAD: ${u.href.substring(0, 80)}`);
+        if (window.CanvasDownloader.DEBUG) console.log(`[CDL resolve] External/non-file URL, trying HEAD: ${u.href.substring(0, 80)}`);
         try {
             const response = await fetch(u.href, { method: 'HEAD', credentials: 'include' });
             if (!response.ok) {
-                console.warn(`[CDL resolve] HEAD failed HTTP ${response.status}: ${u.href.substring(0, 80)}`);
+                if (window.CanvasDownloader.DEBUG) console.warn(`[CDL resolve] HEAD failed HTTP ${response.status}: ${u.href.substring(0, 80)}`);
                 return null;
             }
             const type = response.headers.get('Content-Type');
-            console.log(`[CDL resolve] HEAD OK, Content-Type: ${type}`);
+            if (window.CanvasDownloader.DEBUG) console.log(`[CDL resolve] HEAD OK, Content-Type: ${type}`);
             if (type && type.includes('text/html')) {
-                console.log(`[CDL resolve] HTML page, trying to unpack...`);
+                if (window.CanvasDownloader.DEBUG) console.log(`[CDL resolve] HTML page, trying to unpack...`);
                 return await window.CanvasDownloader.unpackIntermediatePage(u.href);
             }
             // Refine type from Content-Type header for external files
@@ -239,11 +240,11 @@ window.CanvasDownloader.resolveFileUrl = async function (file) {
             }
             return u.href;
         } catch (e) {
-            console.warn(`[CDL resolve] HEAD fetch error: ${e.message} for ${u.href.substring(0, 80)}`);
+            if (window.CanvasDownloader.DEBUG) console.warn(`[CDL resolve] HEAD fetch error: ${e.message} for ${u.href.substring(0, 80)}`);
             return null;
         }
     } catch (e) {
-        console.warn(`[CDL resolve] URL parse error: ${e.message} for ${file.href}`);
+        if (window.CanvasDownloader.DEBUG) console.warn(`[CDL resolve] URL parse error: ${e.message} for ${file.href}`);
         return null;
     }
 };
