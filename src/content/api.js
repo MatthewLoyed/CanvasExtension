@@ -162,7 +162,10 @@ window.CanvasDownloader.resolveFileUrl = async function (file) {
         const u = new URL(file.href);
 
         // Already a direct CDN link
-        if (file.href.includes('canvas-user-content.com')) return file.href;
+        if (file.href.includes('canvas-user-content.com')) {
+            console.log(`[CDL resolve] CDN link, using directly: ${file.href.substring(0, 60)}`);
+            return file.href;
+        }
 
         // Canvas API strategy for /files/ URLs
         const fileIdMatch = u.pathname.match(/\/files\/(\d+)/);
@@ -176,39 +179,55 @@ window.CanvasDownloader.resolveFileUrl = async function (file) {
 
                     // Refine type from API response when we only detected 'file'
                     if (file.type === 'file' && data) {
-                        // Try content-type header from API response
                         const mimeExt = window.CanvasDownloader.mimeToExtension(data['content-type']);
                         if (mimeExt) {
                             file.resolvedType = mimeExt;
                         }
-                        // Also try extracting extension from the API filename
                         if (!file.resolvedType && data.filename) {
                             const fnMatch = data.filename.match(/\.([a-z0-9]{2,5})$/i);
                             if (fnMatch) {
                                 file.resolvedType = '.' + fnMatch[1].toLowerCase();
                             }
                         }
-                        // Also update display name if ours is generic
                         if (data.display_name && window.CanvasDownloader.isGenericLinkText(file.text)) {
                             file.resolvedName = data.display_name;
                         }
                     }
 
-                    if (data.url) return data.url;
+                    if (data.url) {
+                        console.log(`[CDL resolve] Canvas API OK for file ${fileId}: ${data.url.substring(0, 60)}...`);
+                        return data.url;
+                    }
+                    console.warn(`[CDL resolve] Canvas API OK but no URL in response for file ${fileId}:`, data);
+                } else {
+                    console.warn(`[CDL resolve] Canvas API HTTP ${response.status} for file ${fileId}`);
                 }
             } catch (e) {
-                // API failed, fall through
+                console.warn(`[CDL resolve] Canvas API fetch error for file ${fileId}:`, e.message);
             }
             return null; // Strict: if Canvas API fails, don't risk .htm
         }
 
-        // External files: check content type
+        // External files: if URL already has a known file extension, use it directly.
+        // HEAD requests to external servers often time out or get blocked (CORS).
+        const KNOWN_EXT = /\.(pdf|docx?|pptx?|xlsx?|zip|txt)(\?|#|$)/i;
+        if (KNOWN_EXT.test(u.pathname)) {
+            console.log(`[CDL resolve] External URL has known extension, using directly: ${u.href.substring(0, 80)}`);
+            return u.href;
+        }
+
+        // For URLs without a clear extension, do a HEAD check to see if it's a file or HTML
+        console.log(`[CDL resolve] External/non-file URL, trying HEAD: ${u.href.substring(0, 80)}`);
         try {
             const response = await fetch(u.href, { method: 'HEAD', credentials: 'include' });
-            if (!response.ok) return null;
+            if (!response.ok) {
+                console.warn(`[CDL resolve] HEAD failed HTTP ${response.status}: ${u.href.substring(0, 80)}`);
+                return null;
+            }
             const type = response.headers.get('Content-Type');
+            console.log(`[CDL resolve] HEAD OK, Content-Type: ${type}`);
             if (type && type.includes('text/html')) {
-                // Try to unpack wrapper page
+                console.log(`[CDL resolve] HTML page, trying to unpack...`);
                 return await window.CanvasDownloader.unpackIntermediatePage(u.href);
             }
             // Refine type from Content-Type header for external files
@@ -220,9 +239,11 @@ window.CanvasDownloader.resolveFileUrl = async function (file) {
             }
             return u.href;
         } catch (e) {
+            console.warn(`[CDL resolve] HEAD fetch error: ${e.message} for ${u.href.substring(0, 80)}`);
             return null;
         }
     } catch (e) {
+        console.warn(`[CDL resolve] URL parse error: ${e.message} for ${file.href}`);
         return null;
     }
 };

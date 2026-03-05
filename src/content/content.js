@@ -469,23 +469,31 @@ if (window.__cdlContentScriptLoaded) {
    * @returns {Promise<{success: boolean, resolved: number, failed: number}>}
    */
   async function resolveAndDownloadBatch(files) {
-    const resolvedFiles = await Promise.all(files.map(file =>
-      window.CanvasDownloader.resolveFileUrl(file).then(resolvedUrl => ({
+    console.log(`[CDL] Batch resolve: ${files.length} files`);
+
+    const resolvedFiles = await Promise.all(files.map(async (file, i) => {
+      const resolvedUrl = await window.CanvasDownloader.resolveFileUrl(file);
+      const result = {
         url: resolvedUrl,
         filename: file.resolvedName || file.text,
         courseName: file.courseName,
         originalHref: file.href,
         type: file.resolvedType || file.type
-      }))
-    ));
+      };
+      if (!resolvedUrl) {
+        console.warn(`[CDL] ❌ RESOLVE FAILED [${i}]: "${file.text}" → ${file.href}`);
+      } else {
+        console.log(`[CDL] ✅ Resolved [${i}]: "${result.filename}" (${result.type}) → ${resolvedUrl.substring(0, 80)}...`);
+      }
+      return result;
+    }));
 
     const validFiles = resolvedFiles.filter(f => f.url);
     const failedFiles = resolvedFiles.filter(f => !f.url);
 
+    console.log(`[CDL] Batch result: ${validFiles.length} resolved, ${failedFiles.length} failed`);
+
     // Send error status for files that failed resolution
-    // This prevents them from being stuck on QUEUED forever.
-    // Use DOM events since inject-ui.js is in the same page and listens for them.
-    // (chrome.runtime.sendMessage from content scripts goes to service worker, not inject-ui)
     for (const failed of failedFiles) {
       document.dispatchEvent(new CustomEvent('cdl-file-status', {
         detail: {
