@@ -5,6 +5,86 @@
 
 window.CanvasDownloader = window.CanvasDownloader || {};
 
+// ============================================================
+// Shared Filename Utilities
+// Used by both content.js (surface scrape) and api.js (deep scan)
+// ============================================================
+
+/**
+ * Check if link text is generic/unhelpful and shouldn't be used as a filename.
+ * Examples: "PDF", "Download", "Click Here", "File", ".docx", "Word Document"
+ *
+ * @param {string} text - The link's display text.
+ * @returns {boolean} True if the text is generic.
+ */
+window.CanvasDownloader.isGenericLinkText = function (text) {
+    if (!text) return true;
+    const t = text.trim().toLowerCase();
+    if (t.length === 0) return true;
+
+    const GENERIC_PATTERNS = [
+        /^\.?pdf$/,
+        /^\.?docx?$/,
+        /^\.?pptx?$/,
+        /^\.?xlsx?$/,
+        /^\.?zip$/,
+        /^\.?txt$/,
+        /^download$/,
+        /^download file$/,
+        /^click here$/,
+        /^here$/,
+        /^link$/,
+        /^file$/,
+        /^view$/,
+        /^open$/,
+        /^word\s*doc(ument)?$/,
+        /^powerpoint$/,
+        /^spreadsheet$/,
+        /^no text$/,
+        /^unknown file$/
+    ];
+
+    return GENERIC_PATTERNS.some(p => p.test(t));
+};
+
+/**
+ * Extract a human-readable filename from a URL path.
+ * Strips trailing "/download", removes query/hash, decodes URI components,
+ * and replaces underscores/hyphens with spaces for readability.
+ *
+ * @param {string} href - The absolute URL.
+ * @returns {string|null} A cleaned filename, or null if nothing useful found.
+ */
+window.CanvasDownloader.extractFilenameFromUrl = function (href) {
+    try {
+        const u = new URL(href);
+        let path = u.pathname;
+
+        // Strip trailing /download
+        path = path.replace(/\/download\/?$/, '');
+
+        // Get the last segment
+        const segments = path.split('/').filter(Boolean);
+        if (segments.length === 0) return null;
+
+        let lastSegment = segments[segments.length - 1];
+
+        // Skip if it's just a numeric ID (e.g., /files/12345)
+        if (/^\d+$/.test(lastSegment)) return null;
+
+        // Decode URI component (e.g., %20 → space)
+        lastSegment = decodeURIComponent(lastSegment);
+
+        // If it has a file extension, keep it as-is (just clean up separators)
+        // Otherwise return null — it's not a useful filename
+        if (!/\.[a-z0-9]{2,5}$/i.test(lastSegment)) return null;
+
+        return lastSegment;
+    } catch (e) {
+        return null;
+    }
+};
+
 window.CanvasDownloader.transformDownloadUrl = function (urlStr) {
     try {
         const u = new URL(urlStr);
@@ -359,8 +439,11 @@ window.CanvasDownloader.parsePageBodyForFiles = function (htmlBody, baseUrl) {
         if (seenHrefs.has(absoluteHref)) continue;
         seenHrefs.add(absoluteHref);
 
-        // Extract display text
-        const text = link.textContent?.trim() || link.getAttribute('title') || 'Unknown File';
+        // Extract display text — fall back to URL filename if text is generic
+        let text = link.textContent?.trim() || link.getAttribute('title') || 'Unknown File';
+        if (window.CanvasDownloader.isGenericLinkText(text)) {
+            text = window.CanvasDownloader.extractFilenameFromUrl(absoluteHref) || text;
+        }
 
         results.push({
             href: absoluteHref,

@@ -96,17 +96,23 @@ if (window.__cdlContentScriptLoaded) {
       if (fileInfo) {
         let actualDownloadHref = window.CanvasDownloader.transformDownloadUrl(absoluteHref).url;
 
+        // Use URL filename when link text is generic (e.g., "PDF" → "Syllabus.pdf")
+        let displayText = linkText;
+        if (window.CanvasDownloader.isGenericLinkText(linkText)) {
+          displayText = window.CanvasDownloader.extractFilenameFromUrl(absoluteHref) || linkText;
+        }
+
         // Tag the link for inline button injection (surface scrape only)
         if (!isDeep) {
           link.setAttribute('data-cdl-link', 'true');
           link.setAttribute('data-cdl-href', actualDownloadHref);
-          link.setAttribute('data-cdl-text', linkText);
+          link.setAttribute('data-cdl-text', displayText);
           link.setAttribute('data-cdl-type', fileInfo.type);
         }
 
         if (!foundResources.has(actualDownloadHref)) {
           foundResources.set(actualDownloadHref, {
-            text: linkText,
+            text: displayText,
             href: actualDownloadHref,
             context: isDeep ? `Found in: ${sourceUrl}` : findContext(link),
             type: fileInfo.type,
