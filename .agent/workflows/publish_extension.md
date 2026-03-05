@@ -20,12 +20,11 @@ This workflow automates the process of packaging the extension and preparing it 
    ```
 
 3. **Stage and Commit Changes**
-   Stage all local changes and commit them.
+   Stage all local changes and commit them with the version number.
    > [!IMPORTANT]
    > Ensure you have bumped the version in `manifest.json` BEFORE running this workflow if this is a new release.
-   ```bash
-   git add .
-   git commit -m "Prepare release build"
+   ```powershell
+   git add . ; git commit -m "Prepare release build vX.Y.Z"
    ```
 
 4. **Run Build Script**
@@ -36,9 +35,25 @@ This workflow automates the process of packaging the extension and preparing it 
    ```
 
 5. **Verify Zip Contents**
-   Inspect the contents of the most recently created zip file to ensure correctness.
+   Write a temporary PowerShell script to inspect the zip, then run and delete it.
+   Create a file `verify_zip.ps1` in the project root with the following content:
    ```powershell
-   powershell -Command "Write-Host 'Checking latest zip...'; $LatestZip = Get-ChildItem ..\Builds-4-CanvasExtension\*.zip | Sort-Object LastWriteTime -Descending | Select-Object -First 1; Write-Host 'Found:' $LatestZip.Name; Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::OpenRead($LatestZip.FullName).Entries | Select-Object FullName"
+   $z = Get-ChildItem -Path "..\Builds-4-CanvasExtension\*.zip" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+   Write-Host "Found: $($z.Name)"
+   Add-Type -AssemblyName System.IO.Compression.FileSystem
+   $archive = [System.IO.Compression.ZipFile]::OpenRead($z.FullName)
+   $archive.Entries | ForEach-Object { Write-Host $_.FullName }
+   $archive.Dispose()
+   ```
+   Then run:
+   // turbo
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\verify_zip.ps1
+   ```
+   After verifying, delete the temporary script:
+   // turbo
+   ```powershell
+   Remove-Item .\verify_zip.ps1
    ```
 
 6. **Extract and Test**
