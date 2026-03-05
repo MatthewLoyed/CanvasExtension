@@ -302,30 +302,44 @@
     }
 
     // ============================================================
+    // Per-File Status Handler (shared by service worker messages + DOM events)
+    // ============================================================
+    function handleFileStatus(msg) {
+        const item = document.querySelector(`.cdl-file-item[data-href="${CSS.escape(msg.href)}"]`);
+        if (item) {
+            setFileItemStatus(item, msg.status);
+        }
+
+        // Also update inline buttons
+        const inlineBtn = document.querySelector(`a[data-cdl-href="${CSS.escape(msg.href)}"]`)?.nextElementSibling?.querySelector('.cdl-inline-btn');
+        if (inlineBtn) {
+            inlineBtn.classList.remove('is-loading', 'is-success', 'is-error');
+            if (msg.status === 'loading' || msg.status === 'queued') {
+                inlineBtn.classList.add('is-loading');
+            } else if (msg.status === 'success') {
+                inlineBtn.classList.add('is-success');
+                setTimeout(() => inlineBtn.classList.remove('is-success'), 3000);
+            } else if (msg.status === 'error') {
+                inlineBtn.classList.add('is-error');
+                setTimeout(() => inlineBtn.classList.remove('is-error'), 3000);
+            }
+        }
+    }
+
+    // Listen for file status from content.js (DOM event — for resolution failures)
+    document.addEventListener('cdl-file-status', (e) => {
+        if (e.detail && e.detail.action === 'download_file_status') {
+            handleFileStatus(e.detail);
+        }
+    });
+
+    // ============================================================
     // Listen for Progress Updates from Service Worker
     // ============================================================
     chrome.runtime.onMessage.addListener((msg) => {
-        // Per-file status update
+        // Per-file status update (from download engine via service worker)
         if (msg.action === 'download_file_status') {
-            const item = document.querySelector(`.cdl-file-item[data-href="${CSS.escape(msg.href)}"]`);
-            if (item) {
-                setFileItemStatus(item, msg.status);
-            }
-
-            // Also update inline buttons
-            const inlineBtn = document.querySelector(`a[data-cdl-href="${CSS.escape(msg.href)}"]`)?.nextElementSibling?.querySelector('.cdl-inline-btn');
-            if (inlineBtn) {
-                inlineBtn.classList.remove('is-loading', 'is-success', 'is-error');
-                if (msg.status === 'loading' || msg.status === 'queued') {
-                    inlineBtn.classList.add('is-loading');
-                } else if (msg.status === 'success') {
-                    inlineBtn.classList.add('is-success');
-                    setTimeout(() => inlineBtn.classList.remove('is-success'), 3000);
-                } else if (msg.status === 'error') {
-                    inlineBtn.classList.add('is-error');
-                    setTimeout(() => inlineBtn.classList.remove('is-error'), 3000);
-                }
-            }
+            handleFileStatus(msg);
         }
 
         // Overall progress update

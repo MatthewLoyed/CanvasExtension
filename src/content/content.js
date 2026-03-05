@@ -439,6 +439,75 @@ if (window.__cdlContentScriptLoaded) {
   });
 
   // ============================================================
+  // Shared Download Helpers
+  // Consolidates logic used by both CustomEvent & runtime.onMessage handlers
+  // ============================================================
+
+  /**
+   * Resolve a single file URL and send it to the service worker for download.
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  async function resolveAndDownloadSingle(file) {
+    const resolvedUrl = await window.CanvasDownloader.resolveFileUrl(file);
+    if (!resolvedUrl) {
+      return { success: false, error: 'Could not resolve URL' };
+    }
+    chrome.runtime.sendMessage({
+      action: 'download_file',
+      url: resolvedUrl,
+      filename: file.text,
+      courseName: file.courseName,
+      originalHref: file.href,
+      type: file.type
+    });
+    return { success: true };
+  }
+
+  /**
+   * Resolve a batch of file URLs and send valid ones for download.
+   * Files that fail resolution get an explicit 'error' status sent to the UI.
+   * @returns {Promise<{success: boolean, resolved: number, failed: number}>}
+   */
+  async function resolveAndDownloadBatch(files) {
+    const resolvedFiles = await Promise.all(files.map(file =>
+      window.CanvasDownloader.resolveFileUrl(file).then(resolvedUrl => ({
+        url: resolvedUrl,
+        filename: file.text,
+        courseName: file.courseName,
+        originalHref: file.href,
+        type: file.type
+      }))
+    ));
+
+    const validFiles = resolvedFiles.filter(f => f.url);
+    const failedFiles = resolvedFiles.filter(f => !f.url);
+
+    // Send error status for files that failed resolution
+    // This prevents them from being stuck on QUEUED forever.
+    // Use DOM events since inject-ui.js is in the same page and listens for them.
+    // (chrome.runtime.sendMessage from content scripts goes to service worker, not inject-ui)
+    for (const failed of failedFiles) {
+      document.dispatchEvent(new CustomEvent('cdl-file-status', {
+        detail: {
+          action: 'download_file_status',
+          href: failed.originalHref,
+          status: 'error',
+          error: 'Could not resolve URL'
+        }
+      }));
+    }
+
+    if (validFiles.length > 0) {
+      chrome.runtime.sendMessage({
+        action: 'download_batch',
+        files: validFiles
+      });
+    }
+
+    return { success: true, resolved: validFiles.length, failed: failedFiles.length };
+  }
+
+  // ============================================================
   // CustomEvent listener for inject-ui.js communication
   // (Content scripts in the same tab can't use chrome.runtime.sendMessage
   //  to talk to each other, so we use DOM events)
@@ -463,20 +532,7 @@ if (window.__cdlContentScriptLoaded) {
 
     if (detail.action === 'resolve_and_download') {
       try {
-        const resolvedUrl = await window.CanvasDownloader.resolveFileUrl(detail.file);
-        if (!resolvedUrl) {
-          sendResponse({ success: false, error: 'Could not resolve URL' });
-          return;
-        }
-        chrome.runtime.sendMessage({
-          action: 'download_file',
-          url: resolvedUrl,
-          filename: detail.file.text,
-          courseName: detail.file.courseName,
-          originalHref: detail.file.href,
-          type: detail.file.type
-        });
-        sendResponse({ success: true });
+        sendResponse(await resolveAndDownloadSingle(detail.file));
       } catch (err) {
         sendResponse({ success: false, error: err.toString() });
       }
@@ -484,25 +540,8 @@ if (window.__cdlContentScriptLoaded) {
     }
 
     if (detail.action === 'resolve_and_download_batch') {
-      const files = detail.files || [];
       try {
-        const resolvedFiles = await Promise.all(files.map(file =>
-          window.CanvasDownloader.resolveFileUrl(file).then(resolvedUrl => ({
-            url: resolvedUrl,
-            filename: file.text,
-            courseName: file.courseName,
-            originalHref: file.href,
-            type: file.type
-          }))
-        ));
-        const validFiles = resolvedFiles.filter(f => f.url);
-        if (validFiles.length > 0) {
-          chrome.runtime.sendMessage({
-            action: 'download_batch',
-            files: validFiles
-          });
-        }
-        sendResponse({ success: true, resolved: validFiles.length, failed: files.length - validFiles.length });
+        sendResponse(await resolveAndDownloadBatch(detail.files || []));
       } catch (err) {
         sendResponse({ success: false, error: err.toString() });
       }
@@ -553,50 +592,16 @@ if (window.__cdlContentScriptLoaded) {
     }
 
     if (msg.action === 'resolve_and_download') {
-      window.CanvasDownloader.resolveFileUrl(msg.file)
-        .then(resolvedUrl => {
-          if (!resolvedUrl) {
-            sendResponse({ success: false, error: 'Could not resolve URL' });
-            return;
-          }
-          chrome.runtime.sendMessage({
-            action: 'download_file',
-            url: resolvedUrl,
-            filename: msg.file.text,
-            courseName: msg.file.courseName,
-            originalHref: msg.file.href,
-            type: msg.file.type
-          });
-          sendResponse({ success: true });
-        })
-        .catch(err => {
-          sendResponse({ success: false, error: err.toString() });
-        });
+      resolveAndDownloadSingle(msg.file)
+        .then(result => sendResponse(result))
+        .catch(err => sendResponse({ success: false, error: err.toString() }));
       return true;
     }
 
     if (msg.action === 'resolve_and_download_batch') {
-      const files = msg.files || [];
-      Promise.all(files.map(file =>
-        window.CanvasDownloader.resolveFileUrl(file).then(resolvedUrl => ({
-          url: resolvedUrl,
-          filename: file.text,
-          courseName: file.courseName,
-          originalHref: file.href,
-          type: file.type
-        }))
-      )).then(resolvedFiles => {
-        const validFiles = resolvedFiles.filter(f => f.url);
-        if (validFiles.length > 0) {
-          chrome.runtime.sendMessage({
-            action: 'download_batch',
-            files: validFiles
-          });
-        }
-        sendResponse({ success: true, resolved: validFiles.length, failed: files.length - validFiles.length });
-      }).catch(err => {
-        sendResponse({ success: false, error: err.toString() });
-      });
+      resolveAndDownloadBatch(msg.files || [])
+        .then(result => sendResponse(result))
+        .catch(err => sendResponse({ success: false, error: err.toString() }));
       return true;
     }
 
