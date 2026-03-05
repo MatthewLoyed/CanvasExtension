@@ -13,6 +13,8 @@ To verify the "Canvas Downloader" functionality:
    * **Note on Spinners**: You may see a brief spinner. This is the **Recursive URL Unpacker** / API resolver active (see below).
 5. **Test Bulk Download**: Click the "Download All" button injected into the Canvas UI.
    * **Expected Result**: All detected files will sequence through and download seamlessly.
+6. **Test Deep Scan**: On a 'Modules' page, the extension will automatically scan inside Canvas wiki pages to surface embedded files. Wait for "Scanning Pages..." to finish to see the files appear in the toolbar.
+   * **Refresh list**: Click the refresh icon on the toolbar to re-trigger a full page scrape and deep scan.
 
 **Logic Update Note (The "HTML Fix")**: 
 We have implemented an **Authenticated API Proxy** to specifically fix the issue where intermediate policy pages (HTML wrappers) were being downloaded instead of the PDF.
