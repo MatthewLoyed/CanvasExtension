@@ -593,7 +593,7 @@ window.CanvasDownloader.deepScanPages = async function (courseId, pageItems, del
         // Enrich each file with source metadata
         const enrichedFiles = [];
         for (const file of files) {
-            enrichedFiles.push({
+            const enriched = {
                 ...file,
                 href: window.CanvasDownloader.transformDownloadUrl(file.href).url,
                 source: 'deep',
@@ -601,7 +601,40 @@ window.CanvasDownloader.deepScanPages = async function (courseId, pageItems, del
                 moduleName: pageItem.moduleName,
                 moduleId: pageItem.moduleId,
                 courseName: pageItem.moduleName
-            });
+            };
+
+            // Resolve unknown types at scan time via Canvas API
+            // This ensures the UI shows the correct badge (PDF, DOCX, etc.) immediately
+            if (enriched.type === 'file') {
+                const fileIdMatch = file.href.match(/\/files\/(\d+)/);
+                if (fileIdMatch) {
+                    try {
+                        const apiUrl = `${window.location.origin}/api/v1/files/${fileIdMatch[1]}`;
+                        const resp = await fetch(apiUrl, { credentials: 'include' });
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            // Resolve type from content-type
+                            const mimeExt = window.CanvasDownloader.mimeToExtension(data['content-type']);
+                            if (mimeExt) {
+                                enriched.type = mimeExt;
+                            }
+                            // Fallback: extract extension from API filename
+                            if (enriched.type === 'file' && data.filename) {
+                                const fnMatch = data.filename.match(/\.([a-z0-9]{2,5})$/i);
+                                if (fnMatch) enriched.type = '.' + fnMatch[1].toLowerCase();
+                            }
+                            // Improve display name if ours is generic
+                            if (data.display_name && window.CanvasDownloader.isGenericLinkText(enriched.text)) {
+                                enriched.text = data.display_name;
+                            }
+                        }
+                    } catch (e) {
+                        // API failed — keep 'file' type, not critical
+                    }
+                }
+            }
+
+            enrichedFiles.push(enriched);
         }
 
         allFiles.push(...enrichedFiles);
