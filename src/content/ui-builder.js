@@ -81,7 +81,17 @@ window.CanvasDownloaderUI.createToolbar = function (iconUrl) {
             </svg>
             <span id="cdl-download-all-text">Download All</span>
           </button>
+          <label class="cdl-zip-toggle" id="cdl-zip-toggle" title="Bundle the download into a single .zip file">
+            <input type="checkbox" id="cdl-zip-toggle-input">
+            <span>Zip</span>
+          </label>
           <span id="cdl-progress-text" class="cdl-progress-text" style="display:none;"></span>
+        </div>
+        <div class="cdl-select-all-row" id="cdl-select-all-row">
+          <label class="cdl-select-all-label">
+            <input type="checkbox" id="cdl-select-all-checkbox" checked>
+            <span id="cdl-select-all-text">Select All</span>
+          </label>
         </div>
         <div id="cdl-file-list" class="cdl-file-list">
           <!-- Files rendered here -->
@@ -93,11 +103,17 @@ window.CanvasDownloaderUI.createToolbar = function (iconUrl) {
   return toolbar;
 };
 
-window.CanvasDownloaderUI.renderFileList = function (currentFiles, onDownloadClick) {
+window.CanvasDownloaderUI.renderFileList = function (currentFiles, onDownloadClick, selectedHrefs, onToggleSelect) {
   const fileList = document.getElementById('cdl-file-list');
   const countBadge = document.getElementById('cdl-file-count');
 
   if (!fileList || !countBadge) return;
+
+  // Default to "everything selected" so callers that don't pass a selection
+  // (or older call sites) keep the original "download everything" behavior.
+  if (!selectedHrefs) {
+    selectedHrefs = new Set(currentFiles.map(f => f.href));
+  }
 
   const count = currentFiles.length;
 
@@ -132,6 +148,7 @@ window.CanvasDownloaderUI.renderFileList = function (currentFiles, onDownloadCli
     const extClass = `cdl-badge-${ext.toLowerCase()}`;
 
     item.innerHTML = `
+    <input type="checkbox" class="cdl-file-checkbox" data-href="${file.href}" ${selectedHrefs.has(file.href) ? 'checked' : ''}>
     <div class="cdl-file-info">
       <span class="cdl-file-badge ${extClass}">${ext}</span>
       <span class="cdl-file-name" title="${file.text}">${displayName}</span>
@@ -143,6 +160,13 @@ window.CanvasDownloaderUI.renderFileList = function (currentFiles, onDownloadCli
       </svg>
     </button>
   `;
+
+    // Selection checkbox
+    item.querySelector('.cdl-file-checkbox').addEventListener('change', (e) => {
+      e.stopPropagation();
+      if (onToggleSelect) onToggleSelect(file.href, e.target.checked);
+    });
+    item.querySelector('.cdl-file-checkbox').addEventListener('click', (e) => e.stopPropagation());
 
     // Individual download button
     item.querySelector('.cdl-file-download-btn').addEventListener('click', (e) => {

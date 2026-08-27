@@ -35,6 +35,8 @@
     let currentFiles = [];
     let isDropdownOpen = false;
     let isDownloading = false;
+    let selectedHrefs = new Set();
+    let zipEnabled = false;
 
     function injectToolbar() {
         const iconUrl = chrome.runtime.getURL('assets/icons/icon32.png');
@@ -72,12 +74,14 @@
         const toggleBtn = document.getElementById('cdl-toggle-btn');
         const downloadAllBtn = document.getElementById('cdl-download-all-btn');
         const dropdown = document.getElementById('cdl-dropdown');
+        const selectAllCheckbox = document.getElementById('cdl-select-all-checkbox');
+        const zipToggleInput = document.getElementById('cdl-zip-toggle-input');
 
-        // Main button: Instantly download all
+        // Main button: Instantly download the current selection
         mainBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             if (currentFiles.length === 0 || isDownloading) return;
-            downloadAll();
+            downloadSelected();
             // Optional: close dropdown if it was open
             isDropdownOpen = false;
             dropdown.classList.remove('cdl-dropdown-open');
@@ -92,12 +96,27 @@
             document.getElementById('cdl-chevron').classList.toggle('cdl-chevron-open', isDropdownOpen);
         });
 
-        // Hidden "Download All" inside dropdown (optional backup)
+        // Hidden "Download Selected" inside dropdown (optional backup)
         downloadAllBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             if (currentFiles.length === 0 || isDownloading) return;
-            downloadAll();
+            downloadSelected();
         });
+
+        // Select all / none
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', (e) => {
+                selectedHrefs = e.target.checked ? new Set(currentFiles.map(f => f.href)) : new Set();
+                renderFiles();
+            });
+        }
+
+        // Zip bundle toggle
+        if (zipToggleInput) {
+            zipToggleInput.addEventListener('change', (e) => {
+                zipEnabled = e.target.checked;
+            });
+        }
 
         // Re-scan Button: Trigger a full rescan
         const rescanBtn = document.getElementById('cdl-rescan-btn');
@@ -108,7 +127,8 @@
                 if (rescanBtn.classList.contains('is-spinning')) return;
                 // Immediately clear the file list in the UI so the user sees it reset
                 currentFiles = [];
-                window.CanvasDownloaderUI.renderFileList(currentFiles, downloadSingle);
+                selectedHrefs = new Set();
+                renderFiles();
                 // Send event to content.js to bypass cache and rescan everything
                 document.dispatchEvent(new CustomEvent('cdl-trigger-rescan'));
             });
@@ -194,31 +214,70 @@
     }
 
     // ============================================================
+    // Selection State
+    // ============================================================
+
+    // Re-render the file list with current selection state and refresh the
+    // action button label. Central place any selection/list change goes through.
+    function renderFiles() {
+        window.CanvasDownloaderUI.renderFileList(currentFiles, downloadSingle, selectedHrefs, onToggleSelect);
+        updateActionLabel();
+        syncSelectAllCheckbox();
+    }
+
+    function onToggleSelect(href, checked) {
+        if (checked) selectedHrefs.add(href);
+        else selectedHrefs.delete(href);
+        updateActionLabel();
+        syncSelectAllCheckbox();
+    }
+
+    function syncSelectAllCheckbox() {
+        const selectAllCheckbox = document.getElementById('cdl-select-all-checkbox');
+        if (!selectAllCheckbox) return;
+        const total = currentFiles.length;
+        const selected = selectedHrefs.size;
+        selectAllCheckbox.checked = total > 0 && selected === total;
+        selectAllCheckbox.indeterminate = selected > 0 && selected < total;
+    }
+
+    function updateActionLabel() {
+        const total = currentFiles.length;
+        const selected = selectedHrefs.size;
+        const label = (selected === total) ? 'Download All' : `Download Selected (${selected})`;
+
+        const mainTitle = document.querySelector('.cdl-main-title');
+        const downloadAllText = document.getElementById('cdl-download-all-text');
+        if (mainTitle) mainTitle.textContent = label;
+        if (downloadAllText) downloadAllText.textContent = label;
+    }
+
+    // ============================================================
     // Download Actions
     // ============================================================
-    function downloadAll() {
-        if (currentFiles.length === 0) return;
+    function downloadSelected() {
+        const filesToDownload = currentFiles.filter(f => selectedHrefs.has(f.href));
+        if (filesToDownload.length === 0) return;
 
         isDownloading = true;
         const btnGroup = document.getElementById('cdl-button-group');
         const progressBar = document.getElementById('cdl-loading-bar');
 
-        // Snapshot files at click time — protects against mid-scan list changes
-        const filesToDownload = [...currentFiles];
-
         // Enter loading state
         btnGroup.classList.add('is-loading');
         progressBar.style.width = '0%';
 
-        // Mark all file items as queued
-        document.querySelectorAll('.cdl-file-item').forEach(item => {
-            setFileItemStatus(item, 'queued');
+        // Mark selected file items as queued
+        filesToDownload.forEach(f => {
+            const item = document.querySelector(`.cdl-file-item[data-href="${CSS.escape(f.href)}"]`);
+            if (item) setFileItemStatus(item, 'queued');
         });
 
         // Send batch to content.js for URL resolution → then service worker for download
         sendToContentScript({
-            action: 'resolve_and_download_batch',
-            files: filesToDownload
+            action: zipEnabled ? 'resolve_and_download_batch_zip' : 'resolve_and_download_batch',
+            files: filesToDownload,
+            courseName: getCourseNameFromPage()
         }, (response) => {
             if (response && response.success) {
                 // Initial progress update
@@ -378,6 +437,51 @@
                 }
             }
         }
+
+        // Zip bundle progress (fetching/zipping/done/error)
+        if (msg.action === 'download_zip_progress') {
+            if (!isDownloading) return;
+
+            const btnGroup = document.getElementById('cdl-button-group');
+            const progressBar = document.getElementById('cdl-loading-bar');
+            const successState = document.getElementById('cdl-success-state');
+            const countBadge = document.getElementById('cdl-file-count');
+            if (!btnGroup || !progressBar) return;
+
+            if (msg.phase === 'error') {
+                btnGroup.classList.remove('is-loading');
+                isDownloading = false;
+                progressBar.style.width = '0%';
+                alert('Could not build the zip download. See console for details.');
+                return;
+            }
+
+            if (msg.phase === 'zipping') {
+                progressBar.style.width = '95%';
+                return;
+            }
+
+            if (msg.phase === 'done') {
+                progressBar.style.width = '100%';
+                if (successState) successState.querySelector('span').textContent = 'Zipped!';
+                btnGroup.classList.remove('is-loading');
+                btnGroup.classList.add('is-success');
+                isDownloading = false;
+
+                setTimeout(() => {
+                    btnGroup.classList.remove('is-success');
+                    progressBar.style.width = '0%';
+                    if (successState) successState.querySelector('span').textContent = 'Downloaded!';
+                    if (countBadge) countBadge.textContent = `(${currentFiles.length} File${currentFiles.length === 1 ? '' : 's'})`;
+                }, 3000);
+                return;
+            }
+
+            // phase === 'fetching'
+            const percent = Math.round((msg.completed / msg.total) * 100);
+            progressBar.style.width = `${Math.max(5, percent)}%`;
+            if (countBadge) countBadge.textContent = `(${msg.completed}/${msg.total})`;
+        }
     });
 
     // ============================================================
@@ -386,7 +490,14 @@
     document.addEventListener('cdl-files-ready', (e) => {
         if (e.detail && e.detail.files) {
             currentFiles = e.detail.files;
-            window.CanvasDownloaderUI.renderFileList(currentFiles, downloadSingle);
+            // Default-select any file we haven't seen before; drop hrefs that
+            // no longer exist. Keeps "download everything" as the default on
+            // first load/rescan while preserving in-session deselections.
+            const currentHrefs = new Set(currentFiles.map(f => f.href));
+            selectedHrefs.forEach(href => { if (!currentHrefs.has(href)) selectedHrefs.delete(href); });
+            currentFiles.forEach(f => { if (!selectedHrefs.has(f.href)) selectedHrefs.add(f.href); });
+
+            renderFiles();
             // Inject inline buttons whenever file data is ready/updated
             injectInlineButtons();
         }
@@ -427,7 +538,7 @@
             if (rescanBtn) rescanBtn.classList.remove('is-spinning');
             // Re-render file list to re-evaluate toolbar visibility
             // (hides toolbar if scan completed with 0 files)
-            window.CanvasDownloaderUI.renderFileList(currentFiles, downloadSingle);
+            renderFiles();
         }
     });
 
@@ -444,7 +555,8 @@
             sendToContentScript({ action: 'get_files' }, (response) => {
                 if (response && response.files && response.isCanvas) {
                     currentFiles = response.files;
-                    window.CanvasDownloaderUI.renderFileList(currentFiles, downloadSingle);
+                    selectedHrefs = new Set(currentFiles.map(f => f.href));
+                    renderFiles();
                     injectInlineButtons();
                 }
             });

@@ -390,6 +390,63 @@
 }
 
 /* ============================================================
+   Zip Toggle
+   ============================================================ */
+.cdl-zip-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #444;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.cdl-zip-toggle:hover {
+  border-color: #0374B5;
+  color: #0374B5;
+}
+
+.cdl-zip-toggle input[type="checkbox"] {
+  accent-color: #0076a8;
+  cursor: pointer;
+  margin: 0;
+}
+
+/* ============================================================
+   Select All Row
+   ============================================================ */
+.cdl-select-all-row {
+  display: flex;
+  align-items: center;
+  padding: 6px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fafbfc;
+}
+
+.cdl-select-all-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  cursor: pointer;
+  user-select: none;
+}
+
+.cdl-select-all-label input[type="checkbox"] {
+  accent-color: #0076a8;
+  cursor: pointer;
+  margin: 0;
+}
+
+/* ============================================================
    File List
    ============================================================ */
 .cdl-file-list {
@@ -425,6 +482,13 @@
 .cdl-file-item:hover {
   background: #f8fafc;
   transform: translateX(4px);
+}
+
+.cdl-file-checkbox {
+  accent-color: #0076a8;
+  cursor: pointer;
+  margin: 0 10px 0 0;
+  flex-shrink: 0;
 }
 
 .cdl-file-info {

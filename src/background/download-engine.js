@@ -54,6 +54,12 @@ function getSafeFilename(text, extension = ".pdf") {
     return clean;
 }
 
+// Test-only export — `module` is undefined in the browser/service-worker
+// context, so this is inert there and only active under Node/Jest.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { getSafeFilename };
+}
+
 // ============================================================
 // Download Queue
 // ============================================================
@@ -228,4 +234,102 @@ class DownloadQueue {
         }
         chrome.runtime.sendMessage(msg).catch(() => { });
     }
+}
+
+// ============================================================
+// Zip Bundle Download
+// ============================================================
+
+function _sendZipStatusTo(tabId, originalHref, status, errorMsg = '') {
+    const msg = { action: 'download_file_status', href: originalHref, status, error: errorMsg };
+    if (tabId) chrome.tabs.sendMessage(tabId, msg).catch(() => { });
+    chrome.runtime.sendMessage(msg).catch(() => { });
+}
+
+function _sendZipProgress(tabId, progress) {
+    const msg = { action: 'download_zip_progress', ...progress };
+    if (tabId) chrome.tabs.sendMessage(tabId, msg).catch(() => { });
+    chrome.runtime.sendMessage(msg).catch(() => { });
+}
+
+/**
+ * Fetch a batch of already-resolved files, bundle them into a single .zip,
+ * and hand it to chrome.downloads.download() as a base64 data URL.
+ * One-shot operation — not part of DownloadQueue since it doesn't need
+ * concurrency/retry, just sequential fetch + zip.file() + generate.
+ *
+ * @param {Array<{url,filename,courseName,originalHref,type}>} items
+ * @param {string} zipName
+ * @param {number|undefined} tabId
+ */
+async function buildAndDownloadZip(items, zipName, tabId) {
+    const zip = new JSZip();
+    const total = items.length;
+
+    let useFolder = false;
+    try {
+        const res = await new Promise(resolve => chrome.storage.sync.get(['useCanvasResourcesFolder'], resolve));
+        useFolder = res.useCanvasResourcesFolder || false;
+    } catch (err) {
+        console.error(err);
+    }
+
+    let done = 0;
+    let errors = 0;
+    _sendZipProgress(tabId, { phase: 'fetching', completed: 0, total });
+
+    for (const item of items) {
+        _sendZipStatusTo(tabId, item.originalHref, 'loading');
+        try {
+            const resp = await fetch(item.url);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const buf = await resp.arrayBuffer();
+
+            const effectiveType = (item.type && item.type !== 'file') ? item.type : '';
+            const safeName = getSafeFilename(item.filename, effectiveType);
+            const safeCourse = getSafeFilename(item.courseName || "General", "");
+            const entryPath = useFolder ? `${safeCourse}/${safeName}` : safeName;
+
+            zip.file(entryPath, buf);
+            done++;
+            _sendZipStatusTo(tabId, item.originalHref, 'success');
+        } catch (err) {
+            errors++;
+            if (DEBUG) console.warn(`[CDL zip] fetch failed for "${item.filename}": ${err.message}`);
+            _sendZipStatusTo(tabId, item.originalHref, 'error', err.message);
+        }
+        _sendZipProgress(tabId, { phase: 'fetching', completed: done + errors, total });
+    }
+
+    if (done === 0) {
+        _sendZipProgress(tabId, { phase: 'error', done: true, total, completed: 0, errors });
+        return;
+    }
+
+    _sendZipProgress(tabId, { phase: 'zipping', completed: done, total });
+
+    let base64;
+    try {
+        base64 = await zip.generateAsync({ type: 'base64' });
+    } catch (err) {
+        if (DEBUG) console.error('[CDL zip] generateAsync failed', err);
+        _sendZipProgress(tabId, { phase: 'error', done: true, total, completed: done, errors });
+        return;
+    }
+
+    const safeZipName = getSafeFilename(zipName || 'Canvas_Files', '.zip');
+
+    chrome.downloads.download({
+        url: 'data:application/zip;base64,' + base64,
+        filename: safeZipName,
+        conflictAction: 'uniquify'
+    }, () => {
+        const err = chrome.runtime.lastError;
+        if (err) {
+            if (DEBUG) console.error('[CDL zip] download failed', err.message);
+            _sendZipProgress(tabId, { phase: 'error', done: true, total, completed: done, errors });
+            return;
+        }
+        _sendZipProgress(tabId, { phase: 'done', done: true, total, completed: done, errors });
+    });
 }

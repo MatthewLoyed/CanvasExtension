@@ -90,6 +90,8 @@ $Exclude = @(
     ".agent",
     "tests",
     "node_modules",
+    "package.json",
+    "package-lock.json",
     "*.md",
     "*.zip",
     "build_extension.ps1",

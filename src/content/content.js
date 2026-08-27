@@ -551,6 +551,51 @@ if (window.__cdlContentScriptLoaded) {
     return { success: true, resolved: validFiles.length, failed: failedFiles.length };
   }
 
+  /**
+   * Resolve a batch of file URLs and send valid ones to be bundled into a
+   * single .zip and downloaded. URL resolution is identical to
+   * resolveAndDownloadBatch — only what happens after resolution differs.
+   * @returns {Promise<{success: boolean, resolved: number, failed: number}>}
+   */
+  async function resolveAndDownloadBatchZip(files, courseName) {
+    if (window.CanvasDownloader.DEBUG) console.log(`[CDL] Batch resolve (zip): ${files.length} files`);
+
+    const resolvedFiles = await Promise.all(files.map(async (file) => {
+      const resolvedUrl = await window.CanvasDownloader.resolveFileUrl(file);
+      return {
+        url: resolvedUrl,
+        filename: file.resolvedName || file.text,
+        courseName: file.courseName,
+        originalHref: file.href,
+        type: file.resolvedType || file.type
+      };
+    }));
+
+    const validFiles = resolvedFiles.filter(f => f.url);
+    const failedFiles = resolvedFiles.filter(f => !f.url);
+
+    for (const failed of failedFiles) {
+      document.dispatchEvent(new CustomEvent('cdl-file-status', {
+        detail: {
+          action: 'download_file_status',
+          href: failed.originalHref,
+          status: 'error',
+          error: 'Could not resolve URL'
+        }
+      }));
+    }
+
+    if (validFiles.length > 0) {
+      chrome.runtime.sendMessage({
+        action: 'download_batch_zip',
+        files: validFiles,
+        zipName: courseName || 'Canvas_Files'
+      });
+    }
+
+    return { success: true, resolved: validFiles.length, failed: failedFiles.length };
+  }
+
   // ============================================================
   // CustomEvent listener for inject-ui.js communication
   // (Content scripts in the same tab can't use chrome.runtime.sendMessage
@@ -586,6 +631,15 @@ if (window.__cdlContentScriptLoaded) {
     if (detail.action === 'resolve_and_download_batch') {
       try {
         sendResponse(await resolveAndDownloadBatch(detail.files || []));
+      } catch (err) {
+        sendResponse({ success: false, error: err.toString() });
+      }
+      return;
+    }
+
+    if (detail.action === 'resolve_and_download_batch_zip') {
+      try {
+        sendResponse(await resolveAndDownloadBatchZip(detail.files || [], detail.courseName));
       } catch (err) {
         sendResponse({ success: false, error: err.toString() });
       }
@@ -644,6 +698,13 @@ if (window.__cdlContentScriptLoaded) {
 
     if (msg.action === 'resolve_and_download_batch') {
       resolveAndDownloadBatch(msg.files || [])
+        .then(result => sendResponse(result))
+        .catch(err => sendResponse({ success: false, error: err.toString() }));
+      return true;
+    }
+
+    if (msg.action === 'resolve_and_download_batch_zip') {
+      resolveAndDownloadBatchZip(msg.files || [], msg.courseName)
         .then(result => sendResponse(result))
         .catch(err => sendResponse({ success: false, error: err.toString() }));
       return true;

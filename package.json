@@ -1,0 +1,19 @@
+{
+  "name": "canvas-downloader",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dev tooling for the Canvas Downloader Chrome extension (unit tests only — the extension itself has no build step).",
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "jsdom",
+    "testMatch": [
+      "<rootDir>/tests/unit/**/*.test.js"
+    ]
+  }
+}

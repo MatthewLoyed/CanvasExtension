@@ -1,5 +1,5 @@
 // Service worker - download orchestration + side panel management
-importScripts('download-engine.js');
+importScripts('../vendor/jszip.min.js', 'download-engine.js');
 
 // --- Download Queue Instance ---
 const downloadQueue = new DownloadQueue(4, 100);
@@ -25,6 +25,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === 'download_batch') {
         downloadQueue.setTabId(msg.tabId || sender.tab?.id);
         downloadQueue.addBatch(msg.files);
+        sendResponse({ success: true });
+        return;
+    }
+
+    // Batch download, bundled into a single .zip (already resolved URLs)
+    if (msg.action === 'download_batch_zip') {
+        buildAndDownloadZip(msg.files, msg.zipName, msg.tabId || sender.tab?.id);
         sendResponse({ success: true });
         return;
     }

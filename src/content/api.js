@@ -577,6 +577,12 @@ function detectFileType(href, linkElement, extensions) {
     return null;
 }
 
+// Test-only export — `module` is undefined in the browser content-script
+// context, so this is inert there and only active under Node/Jest.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { detectFileType };
+}
+
 /**
  * Resolve unknown file types in parallel via Canvas API.
  * For files detected as generic 'file', fetches metadata to get the real extension and display name.
