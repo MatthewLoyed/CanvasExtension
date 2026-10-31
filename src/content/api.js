@@ -6,6 +6,62 @@
 window.CanvasDownloader = window.CanvasDownloader || {};
 window.CanvasDownloader.DEBUG = false; // Toggle to true to see download pipeline logs
 
+// Canvas breadcrumbs differ across themes and may use an ordered list or
+// omit the Dashboard crumb. Find the course link instead of a fixed index.
+window.CanvasDownloader.getCourseName = function () {
+    const courseId = window.CanvasDownloader.extractCourseId();
+    const cleanText = element => (element?.textContent || '').trim().replace(/\s+/g, ' ');
+    const breadcrumbs = document.querySelector('#breadcrumbs, nav[aria-label="breadcrumbs"]');
+    if (breadcrumbs) {
+        for (const link of breadcrumbs.querySelectorAll('a[href]')) {
+            try {
+                const url = new URL(link.getAttribute('href'), window.location.href);
+                if (url.origin === window.location.origin &&
+                    url.pathname.replace(/\/$/, '') === `/courses/${courseId}`) {
+                    const name = cleanText(link);
+                    if (name) return name;
+                }
+            } catch { /* Ignore malformed breadcrumb links. */ }
+        }
+        // On a course home page the course crumb may be plain text.
+        const crumbs = [...breadcrumbs.querySelectorAll('li')]
+            .map(cleanText).filter(text => text && !/^(dashboard|courses|modules|files|assignments|home)$/i.test(text));
+        if (crumbs.length) return crumbs[0];
+    }
+    const title = document.title.trim();
+    const parts = title.split(/\s*:\s*/);
+    if (parts.length > 1 && parts[1]) return parts[1];
+    if (courseId && title && !/^(canvas|modules|files|assignments)$/i.test(title)) return title;
+    return courseId ? `Canvas_Course_${courseId}` : 'Canvas_Files';
+};
+
+// Canvas exposes one file through course, preview and download URLs. Keep
+// the first usable URL (including its verifier), but identify it by origin/id.
+window.CanvasDownloader.getResourceKey = function (href) {
+    try {
+        const url = new URL(href, window.location.href);
+        const file = url.pathname.match(/\/(?:api\/v1\/)?files\/(\d+)(?:\/download|\/preview)?\/?$/);
+        const preview = /\/files\/?$/.test(url.pathname) && url.searchParams.get('preview');
+        if (file || (preview && /^\d+$/.test(preview))) {
+            return `${url.origin}/files/${file ? file[1] : preview}`;
+        }
+        url.hash = '';
+        return url.href;
+    } catch {
+        return href;
+    }
+};
+
+window.CanvasDownloader.uniqueFiles = function (files, hrefOf = file => file.href) {
+    const seen = new Set();
+    return files.filter(file => {
+        const key = window.CanvasDownloader.getResourceKey(hrefOf(file));
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+};
+
 // ============================================================
 // Shared Filename Utilities
 // Used by both content.js (surface scrape) and api.js (deep scan)
@@ -178,22 +234,13 @@ window.CanvasDownloader.resolveFileUrl = async function (file) {
                 if (response.ok) {
                     const data = await response.json();
 
-                    // Refine type from API response when we only detected 'file'
-                    if (file.type === 'file' && data) {
-                        const mimeExt = window.CanvasDownloader.mimeToExtension(data['content-type']);
-                        if (mimeExt) {
-                            file.resolvedType = mimeExt;
-                        }
-                        if (!file.resolvedType && data.filename) {
-                            const fnMatch = data.filename.match(/\.([a-z0-9]{2,5})$/i);
-                            if (fnMatch) {
-                                file.resolvedType = '.' + fnMatch[1].toLowerCase();
-                            }
-                        }
-                        if (data.display_name && window.CanvasDownloader.isGenericLinkText(file.text)) {
-                            file.resolvedName = data.display_name;
-                        }
-                    }
+                    file.isCanvasFile = true;
+                    file.contentType = data['content-type'] || '';
+                    file.allowHtml = /text\/html|application\/xhtml\+xml/i.test(file.contentType);
+                    file.resolvedName = data.display_name || data.filename || file.text;
+                    const metadataExt = data.filename?.match(/\.([a-z0-9]{1,10})$/i);
+                    file.resolvedType = metadataExt ? '.' + metadataExt[1].toLowerCase() :
+                        (window.CanvasDownloader.mimeToExtension(file.contentType) || file.type);
 
                     if (data.url) {
                         if (window.CanvasDownloader.DEBUG) console.log(`[CDL resolve] Canvas API OK for file ${fileId}: ${data.url.substring(0, 60)}...`);
@@ -312,24 +359,28 @@ window.CanvasDownloader.fetchCanvasApi = async function (url, delayMs = 800, onP
     const allResults = [];
     let nextUrl = url;
     let pageNum = 0;
+    const visited = new Set();
 
     while (nextUrl) {
+        const parsed = new URL(nextUrl, url);
+        if (parsed.origin !== window.location.origin) throw new Error('Unexpected Canvas pagination origin');
+        if (visited.has(parsed.href)) throw new Error('Canvas pagination repeated a page');
+        visited.add(parsed.href);
         pageNum++;
         if (onProgress) onProgress(pageNum);
 
-        const response = await fetch(nextUrl, { credentials: 'include' });
-
-        // Handle rate limiting
-        if (response.status === 429) {
-            const retryAfter = parseInt(response.headers.get('Retry-After') || '5', 10);
-            console.warn(`[Canvas Downloader] Rate limited. Waiting ${retryAfter}s...`);
+        let response;
+        for (let attempt = 0; attempt < 4; attempt++) {
+            response = await fetch(parsed.href, { credentials: 'include' });
+            if (response.status !== 429 || attempt === 3) break;
+            const retryAfter = Math.min(30, Math.max(1, Number(response.headers.get('Retry-After')) || 5));
             await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
-            continue; // Retry same URL
         }
 
         if (!response.ok) {
-            console.error(`[Canvas Downloader] API error ${response.status} for ${nextUrl}`);
-            break;
+            const error = new Error(`Canvas API returned ${response.status}. Please retry the scan.`);
+            error.status = response.status;
+            throw error;
         }
 
         // Check remaining rate limit budget
@@ -450,25 +501,11 @@ window.CanvasDownloader.fetchPageBody = async function (courseId, pageUrl) {
     const apiUrl = `${origin}/api/v1/courses/${courseId}/pages/${encodeURIComponent(pageUrl)}`;
 
     try {
-        const response = await fetch(apiUrl, { credentials: 'include' });
-
-        if (response.status === 429) {
-            const retryAfter = parseInt(response.headers.get('Retry-After') || '5', 10);
-            console.warn(`[Canvas Downloader] Rate limited on page fetch. Waiting ${retryAfter}s...`);
-            await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
-            return window.CanvasDownloader.fetchPageBody(courseId, pageUrl); // Retry once
-        }
-
-        if (!response.ok) {
-            console.warn(`[Canvas Downloader] Could not fetch page "${pageUrl}": ${response.status}`);
-            return null;
-        }
-
-        const data = await response.json();
+        const data = (await window.CanvasDownloader.fetchCanvasApi(apiUrl, 0))[0];
         return { title: data.title || '', body: data.body || '' };
     } catch (e) {
-        console.error(`[Canvas Downloader] Error fetching page "${pageUrl}":`, e);
-        return null;
+        if (e.status === 403 || e.status === 404) return null;
+        throw e;
     }
 };
 

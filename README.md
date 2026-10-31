@@ -2,6 +2,8 @@
 
 Chrome Manifest V3 extension for downloading Canvas LMS course resources, individually or as a ZIP. It adds a download menu to Canvas pages and resolves preview links through Canvas APIs using your existing browser session.
 
+Current combined source version: **1.12.1**. Includes the newer module picker, download/ZIP fixes, and offline course export, plus restored feedback. See [RELEASE_STATUS.md](RELEASE_STATUS.md) for source/store distinctions.
+
 ## Install from source
 
 1. Clone this repository or download a tagged source archive.
@@ -11,6 +13,10 @@ Chrome Manifest V3 extension for downloading Canvas LMS course resources, indivi
 5. Use the injected download menu to select files, scan course modules, and download individual files or a ZIP.
 
 Settings are available from the extension popup. No API key, password, or build step is required. This project is independent of Instructure and your school.
+
+## Offline course export
+
+Use Save Course Offline to select available course content and attachments for a local ZIP with a browsable index and an export report. Canvas access controls still apply. Quizzes, grades, submissions, discussion replies, recordings, and external-site copies are excluded. Some attachments require separate software or internet access. Read the report for missing or partial items; an export is not a guarantee of a complete course backup. Course content is fetched and assembled locally; no course export is uploaded to the developer. Exported archives contain private course material: keep them private.
 
 ## Permissions and privacy
 
@@ -32,14 +38,15 @@ npm test -- --runInBand
 npm audit
 ```
 
-The Jest suite covers file type detection, filename handling, and honest feedback failure handling. It does not verify a live Canvas account, ZIP downloads, or browser permissions. Manually test those on a course you are authorized to access; never commit real course files, session cookies, or signed download URLs.
+The Jest suite covers filenames, download queues, module selection, ZIP contents, offline archive sanitization/transport, and feedback submission. It does not verify a live Canvas account, ZIP downloads, or browser permissions. Manually test those on a course you are authorized to access; never commit real course files, session cookies, or signed download URLs.
 
 Source layout:
 
 - `src/content/`: Canvas detection, scanning, API resolution, and injected UI.
 - `src/background/`: download queue, ZIP assembly, and message handling.
 - `src/popup/`: settings and feedback UI.
-- `src/vendor/`: bundled JSZip; see [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
+- `src/offline/`: bounded course export, HTML sanitization, local archive generation, and UI.
+- `src/vendor/`: bundled JSZip and DOMPurify; see [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
 - `tests/unit/`: Jest tests; other files in `tests/` are manual diagnostics/fixtures.
 
 ## Releases and verification

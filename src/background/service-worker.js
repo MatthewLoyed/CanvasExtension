@@ -1,5 +1,5 @@
 // Service worker - download orchestration + side panel management
-importScripts('../vendor/jszip.min.js', 'download-engine.js');
+importScripts('../vendor/jszip.min.js', 'download-engine.js', 'offline-downloads.js');
 
 // --- Download Queue Instance ---
 const downloadQueue = new DownloadQueue(4, 100);
@@ -14,9 +14,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             url: msg.url,
             filename: msg.filename,
             courseName: msg.courseName,
+            moduleId: msg.moduleId, moduleName: msg.moduleName,
             originalHref: msg.originalHref,
             type: msg.type
-        });
+        }, { tabId: msg.tabId || sender.tab?.id, runId: msg.runId });
         sendResponse({ success: true });
         return;
     }
@@ -24,14 +25,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // Batch download (already resolved URLs)
     if (msg.action === 'download_batch') {
         downloadQueue.setTabId(msg.tabId || sender.tab?.id);
-        downloadQueue.addBatch(msg.files);
+        downloadQueue.addBatch(msg.files, { tabId: msg.tabId || sender.tab?.id, runId: msg.runId, initialErrors: msg.initialErrors });
         sendResponse({ success: true });
         return;
     }
 
     // Batch download, bundled into a single .zip (already resolved URLs)
     if (msg.action === 'download_batch_zip') {
-        buildAndDownloadZip(msg.files, msg.zipName, msg.tabId || sender.tab?.id);
+        buildAndDownloadZip(msg.files, msg.zipName, msg.tabId || sender.tab?.id, { runId: msg.runId, initialErrors: msg.initialErrors });
         sendResponse({ success: true });
         return;
     }

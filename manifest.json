@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Canvas Downloader - Bulk Save Course Files",
-  "version": "1.10.2",
-  "description": "Effortlessly bulk download Canvas course materials. One-click saver for modules and files.",
+  "version": "1.12.1",
+  "description": "Save available Canvas course content and attachments in an offline ZIP, or bulk download selected module files.",
   "icons": {
     "16": "assets/icons/icon16.png",
     "32": "assets/icons/icon32.png",
@@ -28,12 +28,22 @@
       ],
       "js": [
         "src/content/api.js",
+        "src/content/course.js",
         "src/content/ui-builder.js",
         "src/content/content.js",
-        "src/content/inject-ui.js"
+        "src/content/inject-ui.js",
+        "src/vendor/purify.min.js",
+        "src/vendor/jszip.min.js",
+        "src/offline/transport.js",
+        "src/offline/core.js",
+        "src/offline/io.js",
+        "src/offline/styles.js",
+        "src/offline/modal.js",
+        "src/content/offline-entry.js"
       ],
       "css": [
-        "src/content/inject-ui.css"
+        "src/content/inject-ui.css",
+        "src/offline/modal.css"
       ],
       "run_at": "document_idle"
     }

@@ -64,175 +64,161 @@ if (typeof module !== 'undefined' && module.exports) {
 // Download Queue
 // ============================================================
 
+// Assign module folders once per batch, distinguishing sanitized name collisions.
+function prepareModuleFolders(items) {
+    const owners = new Map();
+    for (const item of items) {
+        if (item.moduleId == null) continue;
+        const name = getSafeFilename(item.moduleName || 'Module', '');
+        const key = name.toLowerCase();
+        if (!owners.has(key)) owners.set(key, new Set());
+        owners.get(key).add(String(item.moduleId));
+    }
+    return items.map(item => {
+        if (item.moduleId == null) return { ...item };
+        const name = getSafeFilename(item.moduleName || 'Module', '');
+        const suffix = owners.get(name.toLowerCase()).size > 1 ? ` (${item.moduleId})` : '';
+        return { ...item, moduleFolder: name + suffix };
+    });
+}
+
+function getDownloadPath(item, useFolder, zip = false) {
+    const type = item.type && item.type !== 'file' ? item.type : '';
+    const name = getSafeFilename(item.filename, type);
+    const course = getSafeFilename(item.courseName || 'General', '');
+    if (item.moduleId != null) {
+        const folder = getSafeFilename(item.moduleFolder || item.moduleName || 'Module', '');
+        return zip ? `${folder}/${name}` : `${useFolder ? 'Canvas_Resources/' : ''}${course}/${folder}/${name}`;
+    }
+    return useFolder ? `${zip ? '' : 'Canvas_Resources/'}${course}/${name}` : name;
+}
+
 class DownloadQueue {
     constructor(concurrency = 4, delay = 100) {
-        this.queue = [];
-        this.active = 0;
         this.concurrency = concurrency;
         this.delay = delay;
-        this.total = 0;
-        this.completed = 0;
-        this.errors = 0;
-        this._tabId = null; // Tab to send progress updates to
-    }
-
-    /**
-     * Set the tab ID to send progress messages to.
-     */
-    setTabId(tabId) {
-        this._tabId = tabId;
-    }
-
-    /**
-     * Add a batch of file items to the queue.
-     * Each item: { url, filename, courseName, originalHref, type }
-     *  - url: the resolved binary download URL
-     *  - filename: display name
-     *  - courseName: course folder name
-     *  - originalHref: the original href (used as a unique key for status updates)
-     *  - type: file extension type
-     */
-    addBatch(items) {
-        items.forEach(item => {
-            this.queue.push(item);
-            this.total++;
+        this.queue = [];
+        this.active = 0;
+        this.runs = new Map();
+        this.jobs = new Map();
+        this._tabId = null;
+        this._saving = Promise.resolve();
+        this.ready = this._restore();
+        chrome.downloads.onChanged?.addListener(delta => {
+            this.ready.then(() => this._changed(delta));
         });
-        this._sendProgress();
-        this._process();
     }
-
-    addSingle(item) {
-        this.queue.push(item);
-        this.total++;
-        this._sendProgress();
-        this._process();
+    setTabId(tabId) { this._tabId = tabId; }
+    async _restore() {
+        try {
+            if (!chrome.storage.session) return;
+            const data = await chrome.storage.session.get('cdlQueueStateV1');
+            const state = data.cdlQueueStateV1;
+            if (!state) return;
+            this.runs = new Map(state.runs || []);
+            this.jobs = new Map(state.jobs || []);
+            this.queue = state.queue || [];
+            for (const [id] of this.jobs) this._check(id);
+            setTimeout(() => this._process(), 0);
+        } catch { /* A fresh session has no saved downloads. */ }
     }
-
-    reset() {
-        this.total = 0;
-        this.completed = 0;
-        this.errors = 0;
+    _persist() {
+        if (!chrome.storage.session) return;
+        const snapshot = {
+            runs: [...this.runs].filter(([, run]) => run.completed + run.errors < run.total),
+            jobs: [...this.jobs], queue: this.queue.map(item => ({ ...item }))
+        };
+        // Snapshot primitive counters now; serialize writes to avoid stale state winning.
+        snapshot.runs = snapshot.runs.map(([id, run]) => [id, { ...run }]);
+        this._saving = this._saving.then(() => chrome.storage.session.set({ cdlQueueStateV1: snapshot })).catch(() => {});
     }
-
+    addBatch(items, options = {}) {
+        const tabId = options.tabId || this._tabId;
+        const runId = options.runId || `single-${Date.now()}-${Math.random()}`;
+        this.ready.then(() => {
+            if (this.runs.has(runId)) return;
+            const errors = options.initialErrors || 0;
+            const run = { id: runId, tabId, total: items.length + errors, completed: 0, errors };
+            this.runs.set(runId, run);
+            this.queue.push(...prepareModuleFolders(items).map(item => ({ ...item, runId, tabId })));
+            this._progress(run);
+            this._persist();
+            this._process();
+        });
+    }
+    addSingle(item, options) { this.addBatch([item], options); }
     _process() {
-        while (this.active < this.concurrency && this.queue.length > 0) {
-            this._startNext();
-        }
+        while (this.active < this.concurrency && this.queue.length) this._startNext();
     }
-
+    _send(item, status, error = '') {
+        this._notify(item.tabId, { action: 'download_file_status', runId: item.runId, href: item.originalHref, status, error });
+    }
+    _notify(tabId, message) {
+        if (tabId != null) chrome.tabs.sendMessage(tabId, message).catch(() => {});
+        chrome.runtime.sendMessage(message).catch(() => {});
+    }
+    _progress(run) {
+        if (!run) return;
+        const remaining = Math.max(0, run.total - run.completed - run.errors);
+        this._notify(run.tabId, { action: 'download_progress', runId: run.id, total: run.total,
+            completed: run.completed, errors: run.errors, remaining, done: remaining === 0 });
+    }
+    _finish(item, success, error) {
+        const run = this.runs.get(item.runId);
+        if (!run) return;
+        if (success) run.completed++; else run.errors++;
+        this._send(item, success ? 'success' : 'error', error);
+        this._progress(run);
+        this._persist();
+        if (run.completed + run.errors === run.total) setTimeout(() => {
+            if (this.runs.get(run.id) === run) this.runs.delete(run.id);
+        }, 60000);
+    }
+    _changed(delta) {
+        const item = this.jobs.get(delta.id);
+        const state = delta.state?.current;
+        if (!item || (state !== 'complete' && state !== 'interrupted')) return;
+        this.jobs.delete(delta.id);
+        this._finish(item, state === 'complete', delta.error?.current || (state === 'interrupted' ? 'Download interrupted' : ''));
+    }
+    _check(id) {
+        chrome.downloads.search?.({ id }, results => {
+            if (chrome.runtime.lastError) return;
+            const current = results?.[0];
+            if (current) this._changed({ id, state: { current: current.state }, error: { current: current.error } });
+        });
+    }
     async _startNext() {
         this.active++;
         const item = this.queue.shift();
-
-        // Notify: file is now downloading
-        this._sendFileStatus(item.originalHref, 'loading');
-
-        // When type is 'file' (unknown), don't force an extension — let the
-        // browser/server determine it from Content-Disposition or URL.
-        const effectiveType = (item.type && item.type !== 'file') ? item.type : '';
-        const safeName = getSafeFilename(item.filename, effectiveType);
-        const safeCourse = getSafeFilename(item.courseName || "General", "");
-
+        this._send(item, 'loading');
         let useFolder = false;
         try {
-            const res = await new Promise(resolve => chrome.storage.sync.get(['useCanvasResourcesFolder'], resolve));
-            useFolder = res.useCanvasResourcesFolder || false;
-        } catch (err) {
-            console.error(err);
-        }
-
-        const relativePath = useFolder ? `Canvas_Resources/${safeCourse}/${safeName}` : safeName;
-
-        if (DEBUG) console.log(`[CDL download] Starting: "${item.filename}" → "${relativePath}" (type: ${item.type}, url: ${item.url.substring(0, 80)}...)`);
-
-        const attemptDownload = (url, path, isRetry = false) => {
-            chrome.downloads.download({
-                url: url,
-                filename: path,
-                conflictAction: 'uniquify'
-            }, (id) => {
-                const err = chrome.runtime.lastError;
-                if (err) {
-                    if (DEBUG) console.warn(`[CDL download] ${isRetry ? 'RETRY ' : ''}FAILED: "${path}" — ${err.message}`);
-                    if (!isRetry) {
-                        // Retry with fallback filename (skip .file extension)
-                        const cleanExt = (item.type && item.type.startsWith('.')) ? item.type : '';
-                        const fallbackName = `Canvas_File_${Date.now()}_${Math.floor(Math.random() * 1000)}${cleanExt}`;
-                        const fallbackPath = useFolder ? `Canvas_Resources/${safeCourse}/fallback/${fallbackName}` : `fallback/${fallbackName}`;
-                        if (DEBUG) console.log(`[CDL download] Retrying with fallback: "${fallbackPath}"`);
-                        attemptDownload(url, fallbackPath, true);
-                    } else {
-                        // Double fail
-                        if (DEBUG) console.error(`[CDL download] DOUBLE FAIL: "${item.filename}" — giving up`);
-                        this._sendFileStatus(item.originalHref, 'error', err.message);
-                        this.errors++;
-                        this.active--;
-                        this._sendProgress();
-                        setTimeout(() => this._process(), this.delay);
-                    }
-                } else {
-                    if (DEBUG) console.log(`[CDL download] SUCCESS: "${path}" (downloadId: ${id})`);
-                    // Success
-                    this._sendFileStatus(item.originalHref, 'success');
-                    this.completed++;
-                    this.active--;
-                    this._sendProgress();
-                    setTimeout(() => this._process(), this.delay);
+            const settings = await new Promise(resolve => chrome.storage.sync.get(['useCanvasResourcesFolder'], resolve));
+            useFolder = !!settings.useCanvasResourcesFolder;
+        } catch { /* Use the existing default folder preference. */ }
+        const filename = getDownloadPath(item, useFolder);
+        const attempt = (path, retried = false) => {
+            chrome.downloads.download({ url: item.url, filename: path, conflictAction: 'uniquify' }, id => {
+                const error = chrome.runtime.lastError;
+                if (error && !retried) {
+                    const slash = filename.lastIndexOf('/');
+                    const prefix = slash >= 0 ? filename.slice(0, slash + 1) : '';
+                    const ext = item.type && item.type !== 'file' ? item.type : '';
+                    attempt(`${prefix}Canvas_File_${Date.now()}_${Math.floor(Math.random() * 1000)}${ext}`, true);
+                    return;
                 }
+                this.active--;
+                if (error || id == null) this._finish(item, false, error?.message || 'Could not start download');
+                else {
+                    this.jobs.set(id, item);
+                    this._persist();
+                    this._check(id);
+                }
+                setTimeout(() => this._process(), this.delay);
             });
         };
-
-        attemptDownload(item.url, relativePath, false);
-    }
-
-    /**
-     * Send overall progress to the requesting tab.
-     */
-    _sendProgress() {
-        const isDone = this.queue.length === 0 && this.active === 0 && this.total > 0;
-        const msg = {
-            action: 'download_progress',
-            total: this.total,
-            completed: this.completed,
-            errors: this.errors,
-            remaining: this.queue.length,
-            activeCount: this.active,
-            done: isDone
-        };
-
-        // Send to the requesting tab's content scripts
-        if (this._tabId) {
-            chrome.tabs.sendMessage(this._tabId, msg).catch(() => { });
-        }
-
-        // Also broadcast to any open side panel
-        chrome.runtime.sendMessage(msg).catch(() => { });
-
-        if (isDone) {
-            // Auto-reset after a delay, but check if still idle
-            setTimeout(() => {
-                if (this.queue.length === 0 && this.active === 0) {
-                    this.reset();
-                }
-            }, 5000);
-        }
-    }
-
-    /**
-     * Send per-file status to the requesting tab.
-     */
-    _sendFileStatus(originalHref, status, errorMsg = '') {
-        const msg = {
-            action: 'download_file_status',
-            href: originalHref,
-            status: status, // 'loading' | 'success' | 'error'
-            error: errorMsg
-        };
-
-        if (this._tabId) {
-            chrome.tabs.sendMessage(this._tabId, msg).catch(() => { });
-        }
-        chrome.runtime.sendMessage(msg).catch(() => { });
+        attempt(filename);
     }
 }
 
@@ -240,8 +226,8 @@ class DownloadQueue {
 // Zip Bundle Download
 // ============================================================
 
-function _sendZipStatusTo(tabId, originalHref, status, errorMsg = '') {
-    const msg = { action: 'download_file_status', href: originalHref, status, error: errorMsg };
+function _sendZipStatusTo(tabId, originalHref, status, errorMsg = '', runId) {
+    const msg = { action: 'download_file_status', href: originalHref, status, error: errorMsg, runId };
     if (tabId) chrome.tabs.sendMessage(tabId, msg).catch(() => { });
     chrome.runtime.sendMessage(msg).catch(() => { });
 }
@@ -262,9 +248,12 @@ function _sendZipProgress(tabId, progress) {
  * @param {string} zipName
  * @param {number|undefined} tabId
  */
-async function buildAndDownloadZip(items, zipName, tabId) {
+async function buildAndDownloadZip(items, zipName, tabId, options = {}) {
+    items = prepareModuleFolders(items);
+    const progress = value => _sendZipProgress(tabId, { ...value, runId: options.runId });
+    const status = (href, value, error) => _sendZipStatusTo(tabId, href, value, error, options.runId);
     const zip = new JSZip();
-    const total = items.length;
+    const total = items.length + (options.initialErrors || 0);
 
     let useFolder = false;
     try {
@@ -275,61 +264,92 @@ async function buildAndDownloadZip(items, zipName, tabId) {
     }
 
     let done = 0;
-    let errors = 0;
-    _sendZipProgress(tabId, { phase: 'fetching', completed: 0, total });
+    let errors = options.initialErrors || 0;
+    const entryPaths = new Set();
+    progress({ phase: 'fetching', completed: 0, total });
 
     for (const item of items) {
-        _sendZipStatusTo(tabId, item.originalHref, 'loading');
+        status(item.originalHref, 'loading');
         try {
-            const resp = await fetch(item.url);
+            const resp = await fetch(item.url, { credentials: 'include' });
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            if (/text\/html|application\/xhtml\+xml/i.test(resp.headers.get('Content-Type') || '') &&
+                (!(item.allowHtml && item.isCanvasFile) || /\/(login|sso|saml|cas)(?:[/?]|$)/i.test(resp.url || ''))) {
+                throw new Error('Received an HTML page instead of a file. Please sign in and retry.');
+            }
             const buf = await resp.arrayBuffer();
 
-            const effectiveType = (item.type && item.type !== 'file') ? item.type : '';
-            const safeName = getSafeFilename(item.filename, effectiveType);
-            const safeCourse = getSafeFilename(item.courseName || "General", "");
-            const entryPath = useFolder ? `${safeCourse}/${safeName}` : safeName;
+            const fullPath = getDownloadPath(item, useFolder, true);
+            const slash = fullPath.lastIndexOf('/');
+            const prefix = slash >= 0 ? fullPath.slice(0, slash + 1) : '';
+            const safeName = fullPath.slice(slash + 1);
+            const dot = safeName.lastIndexOf('.');
+            const stem = dot > 0 ? safeName.slice(0, dot) : safeName;
+            const ext = dot > 0 ? safeName.slice(dot) : '';
+            let entryPath = prefix + safeName;
+            let suffix = 1;
+            while (entryPaths.has(entryPath.toLowerCase())) {
+                entryPath = `${prefix}${stem} (${suffix++})${ext}`;
+            }
+            entryPaths.add(entryPath.toLowerCase());
 
             zip.file(entryPath, buf);
             done++;
-            _sendZipStatusTo(tabId, item.originalHref, 'success');
+            status(item.originalHref, 'success');
         } catch (err) {
             errors++;
             if (DEBUG) console.warn(`[CDL zip] fetch failed for "${item.filename}": ${err.message}`);
-            _sendZipStatusTo(tabId, item.originalHref, 'error', err.message);
+            status(item.originalHref, 'error', err.message);
         }
-        _sendZipProgress(tabId, { phase: 'fetching', completed: done + errors, total });
+        progress({ phase: 'fetching', completed: done + errors, total });
     }
 
     if (done === 0) {
-        _sendZipProgress(tabId, { phase: 'error', done: true, total, completed: 0, errors });
+        progress({ phase: 'error', done: true, total, completed: 0, errors });
         return;
     }
 
-    _sendZipProgress(tabId, { phase: 'zipping', completed: done, total });
+    progress({ phase: 'zipping', completed: done, total });
 
     let base64;
     try {
         base64 = await zip.generateAsync({ type: 'base64' });
     } catch (err) {
         if (DEBUG) console.error('[CDL zip] generateAsync failed', err);
-        _sendZipProgress(tabId, { phase: 'error', done: true, total, completed: done, errors });
+        progress({ phase: 'error', done: true, total, completed: done, errors });
         return;
     }
 
     const safeZipName = getSafeFilename(zipName || 'Canvas_Files', '.zip');
 
-    chrome.downloads.download({
-        url: 'data:application/zip;base64,' + base64,
-        filename: safeZipName,
-        conflictAction: 'uniquify'
-    }, () => {
-        const err = chrome.runtime.lastError;
-        if (err) {
-            if (DEBUG) console.error('[CDL zip] download failed', err.message);
-            _sendZipProgress(tabId, { phase: 'error', done: true, total, completed: done, errors });
-            return;
-        }
-        _sendZipProgress(tabId, { phase: 'done', done: true, total, completed: done, errors });
+    try {
+        await saveArchive({ url: 'data:application/zip;base64,' + base64, filename: safeZipName, conflictAction: 'uniquify' });
+        progress({ phase: 'done', done: true, total, completed: done, errors });
+    } catch (error) {
+        progress({ phase: 'error', done: true, total, completed: done, errors, error: error.message });
+    }
+}
+
+function saveArchive(options) {
+    return new Promise((resolve, reject) => {
+        let downloadId;
+        const cleanup = () => chrome.downloads.onChanged?.removeListener(changed);
+        const changed = delta => {
+            if (delta.id !== downloadId) return;
+            if (delta.state?.current === 'complete') { cleanup(); resolve(); }
+            if (delta.state?.current === 'interrupted') { cleanup(); reject(new Error(delta.error?.current || 'ZIP save interrupted')); }
+        };
+        chrome.downloads.onChanged?.addListener(changed);
+        chrome.downloads.download(options, id => {
+            const error = chrome.runtime.lastError;
+            if (error || id == null) { cleanup(); reject(new Error(error?.message || 'Could not save ZIP')); return; }
+            downloadId = id;
+            if (!chrome.downloads.onChanged) { resolve(); return; }
+            chrome.downloads.search({ id }, results => {
+                if (chrome.runtime.lastError) return;
+                const current = results?.[0];
+                if (current) changed({ id, state: { current: current.state }, error: { current: current.error } });
+            });
+        });
     });
 }

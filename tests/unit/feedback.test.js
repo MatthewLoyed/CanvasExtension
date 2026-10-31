@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const version = require('../../manifest.json').version;
 let submit;
 let warning;
 
@@ -8,7 +9,7 @@ beforeEach(() => {
   global.chrome = {
     tabs: { query: jest.fn().mockResolvedValue([]) },
     storage: { sync: { get: jest.fn((keys, callback) => callback({})), set: jest.fn() } },
-    runtime: { getManifest: () => ({ version: '1.10.2' }) }
+    runtime: { getManifest: () => ({ version }) }
   };
   global.fetch = jest.fn().mockResolvedValue({ ok: true });
   window.alert = jest.fn();
@@ -35,7 +36,7 @@ test('sends only explicit feedback and version to the public submission endpoint
   expect(options).toMatchObject({ method: 'POST', credentials: 'omit', headers: { Accept: 'application/json' } });
   expect(JSON.parse(options.body)).toEqual({
     email: 'tester@example.com',
-    message: '[Feature Request]\nA reproducible download issue\n\n-- Extension Version --\n1.10.2',
+    message: `[Feature Request]\nA reproducible download issue\n\n-- Extension Version --\n${version}`,
     _subject: 'Extension Feedback: Feature Request'
   });
   expect(document.getElementById('feedback-success').style.display).toBe('block');

@@ -87,7 +87,7 @@ if (window.__cdlContentScriptLoaded) {
       const lowerHref = absoluteHref.toLowerCase();
 
       if (lowerHref.includes('javascript:') || lowerHref.includes('mailto:')) return;
-      if (lowerHref.includes('/folders/') || lowerHref.includes('_preview') || lowerHref.includes('wrap=1')) {
+      if (lowerHref.includes('/folders/')) {
         return;
       }
 
@@ -111,8 +111,9 @@ if (window.__cdlContentScriptLoaded) {
           link.setAttribute('data-cdl-type', fileInfo.type);
         }
 
-        if (!foundResources.has(actualDownloadHref)) {
-          foundResources.set(actualDownloadHref, {
+        const resourceKey = window.CanvasDownloader.getResourceKey(actualDownloadHref);
+        if (!foundResources.has(resourceKey)) {
+          foundResources.set(resourceKey, {
             text: displayText,
             href: actualDownloadHref,
             context: isDeep ? `Found in: ${sourceUrl}` : findContext(link),
@@ -130,33 +131,7 @@ if (window.__cdlContentScriptLoaded) {
   }
 
   function getCourseName() {
-    // Strategy 1: Breadcrumbs (Safe & Reliable on Canvas)
-    // Usually: Courses > Course Name > Modules ...
-    try {
-      const crumbs = document.querySelectorAll('#breadcrumbs ul li');
-      if (crumbs && crumbs.length >= 2) {
-        // The second item is usually the Course Title (Index 1)
-        // Index 0 is "Dashboard" or "Courses"
-        const courseCrumb = crumbs[1];
-        const text = courseCrumb.innerText.trim();
-        if (text && text.length < 50) return text;
-      }
-    } catch (e) { }
-
-    // Strategy 2: Page Title (Parsing "Assignment : Course Name")
-    try {
-      const title = document.title;
-      if (title.includes(':')) {
-        const parts = title.split(':');
-        // Usually the last part is "Canvas" or "Institution", second to last might be course?
-        // Actually standard Canvas layout: "Item Name : Course Name : Instructure"
-        if (parts.length >= 2) {
-          return parts[1].trim();
-        }
-      }
-    } catch (e) { }
-
-    return "General";
+    return window.CanvasDownloader.getCourseName();
   }
 
   function detectFile(link, href, text) {
@@ -300,6 +275,7 @@ if (window.__cdlContentScriptLoaded) {
    * Only runs on module pages (course home or /modules).
    */
   function startDeepScan() {
+    if (window.CanvasDownloader.isModuleListPage?.()) { startCourseScan(); return; }
     if (!isModulesPage()) return; // Only scan on module pages
 
     const courseId = window.CanvasDownloader.extractCourseId();
@@ -311,8 +287,9 @@ if (window.__cdlContentScriptLoaded) {
     if (cachedFiles && cachedFiles.length > 0) {
       const courseName = getCourseName();
       for (const file of cachedFiles) {
-        if (!foundResources.has(file.href)) {
-          foundResources.set(file.href, { ...file, courseName });
+        const key = window.CanvasDownloader.getResourceKey(file.href);
+        if (!foundResources.has(key)) {
+          foundResources.set(key, { ...file, courseName });
         }
       }
       sendUpdate();
@@ -369,8 +346,9 @@ if (window.__cdlContentScriptLoaded) {
           const courseName = getCourseName();
           for (const file of newFiles) {
             allDeepFiles.push(file); // Collect for cache
-            if (!foundResources.has(file.href)) {
-              foundResources.set(file.href, { ...file, courseName });
+            const key = window.CanvasDownloader.getResourceKey(file.href);
+            if (!foundResources.has(key)) {
+              foundResources.set(key, { ...file, courseName });
             }
           }
           sendUpdate();
@@ -393,6 +371,44 @@ if (window.__cdlContentScriptLoaded) {
         detail: { status: 'error', error: err.toString() }
       }));
     });
+  }
+
+  let courseScanGeneration = 0;
+  let courseState = { groups: [], scanning: false, complete: false, error: '', completed: 0, total: 0 };
+  function publishCourseState() {
+    document.dispatchEvent(new CustomEvent('cdl-course-state', { detail: courseState }));
+  }
+  async function startCourseScan(force = false) {
+    const courseId = window.CanvasDownloader.extractCourseId();
+    if (!courseId || !window.CanvasDownloader.scanCourse) return;
+    if (!force && (courseState.scanning || courseState.complete)) { publishCourseState(); return; }
+    if (!force) {
+      try {
+        const cached = JSON.parse(sessionStorage.getItem(`cdl-course-v1-${courseId}`));
+        if (cached && Date.now() - cached.time < 300000 && Array.isArray(cached.groups)) {
+          courseState = { groups: cached.groups, scanning: false, complete: true, error: '', completed: cached.groups.length, total: cached.groups.length };
+          publishCourseState();
+          return;
+        }
+      } catch { /* Cache misses do not prevent a scan. */ }
+    }
+    const generation = ++courseScanGeneration;
+    courseState = { groups: [], scanning: true, complete: false, error: '', completed: 0, total: 0 };
+    publishCourseState();
+    try {
+      const groups = await window.CanvasDownloader.scanCourse(courseId, update => {
+        if (generation !== courseScanGeneration) return;
+        courseState = { ...courseState, ...update };
+        publishCourseState();
+      }, () => generation !== courseScanGeneration);
+      if (generation !== courseScanGeneration) return;
+      courseState = { ...courseState, groups, scanning: false, complete: true };
+      try { sessionStorage.setItem(`cdl-course-v1-${courseId}`, JSON.stringify({ time: Date.now(), groups })); } catch { /* Storage may be full. */ }
+    } catch (error) {
+      if (generation !== courseScanGeneration) return;
+      courseState = { ...courseState, scanning: false, complete: false, error: error.message };
+    }
+    publishCourseState();
   }
 
   function init() {
@@ -427,7 +443,7 @@ if (window.__cdlContentScriptLoaded) {
     observer.observe(document.body, { childList: true, subtree: true });
 
     // Auto-start deep scan after surface scrape finishes
-    if (isModulesPage()) {
+    if (isModulesPage() && !window.CanvasDownloader.isModuleListPage?.()) {
       const courseId = window.CanvasDownloader.extractCourseId();
       // If no valid cache, signal scanning early so the toolbar doesn't flicker/hide during the 1000ms delay
       if (courseId && !getCachedDeepScan(courseId)) {
@@ -483,16 +499,26 @@ if (window.__cdlContentScriptLoaded) {
    * Resolve a single file URL and send it to the service worker for download.
    * @returns {Promise<{success: boolean, error?: string}>}
    */
-  async function resolveAndDownloadSingle(file) {
+  const pendingSingleDownloads = new Map();
+  function resolveAndDownloadSingle(file) {
+    const key = window.CanvasDownloader.getResourceKey(file.href);
+    if (pendingSingleDownloads.has(key)) return pendingSingleDownloads.get(key);
+    const request = sendSingleDownload(file).finally(() => pendingSingleDownloads.delete(key));
+    pendingSingleDownloads.set(key, request);
+    return request;
+  }
+
+  async function sendSingleDownload(file) {
     const resolvedUrl = await window.CanvasDownloader.resolveFileUrl(file);
     if (!resolvedUrl) {
       return { success: false, error: 'Could not resolve URL' };
     }
-    chrome.runtime.sendMessage({
+    await chrome.runtime.sendMessage({
       action: 'download_file',
       url: resolvedUrl,
       filename: file.resolvedName || file.text,
       courseName: file.courseName,
+      moduleId: file.moduleId, moduleName: file.moduleName,
       originalHref: file.href,
       type: file.resolvedType || file.type
     });
@@ -504,96 +530,41 @@ if (window.__cdlContentScriptLoaded) {
    * Files that fail resolution get an explicit 'error' status sent to the UI.
    * @returns {Promise<{success: boolean, resolved: number, failed: number}>}
    */
-  async function resolveAndDownloadBatch(files) {
-    if (window.CanvasDownloader.DEBUG) console.log(`[CDL] Batch resolve: ${files.length} files`);
-
-    const resolvedFiles = await Promise.all(files.map(async (file, i) => {
-      const resolvedUrl = await window.CanvasDownloader.resolveFileUrl(file);
+  async function prepareDownloadBatch(files, courseName, zip, runId) {
+    const api = window.CanvasDownloader;
+    files = api.uniqueFiles(files);
+    let prepared = 0;
+    const resolve = async file => {
+      let url = null;
+      try { url = await api.resolveFileUrl(file); } catch { /* Report below. */ }
       const result = {
-        url: resolvedUrl,
-        filename: file.resolvedName || file.text,
-        courseName: file.courseName,
-        originalHref: file.href,
+        ...file, url, filename: file.resolvedName || file.text,
+        courseName: file.courseName || courseName, originalHref: file.href,
         type: file.resolvedType || file.type
       };
-      if (!resolvedUrl) {
-        if (window.CanvasDownloader.DEBUG) console.warn(`[CDL] ❌ RESOLVE FAILED [${i}]: "${file.text}" → ${file.href}`);
-      } else {
-        if (window.CanvasDownloader.DEBUG) console.log(`[CDL] ✅ Resolved [${i}]: "${result.filename}" (${result.type}) → ${resolvedUrl.substring(0, 80)}...`);
-      }
-      return result;
-    }));
-
-    const validFiles = resolvedFiles.filter(f => f.url);
-    const failedFiles = resolvedFiles.filter(f => !f.url);
-
-    if (window.CanvasDownloader.DEBUG) console.log(`[CDL] Batch result: ${validFiles.length} resolved, ${failedFiles.length} failed`);
-
-    // Send error status for files that failed resolution
-    for (const failed of failedFiles) {
-      document.dispatchEvent(new CustomEvent('cdl-file-status', {
-        detail: {
-          action: 'download_file_status',
-          href: failed.originalHref,
-          status: 'error',
-          error: 'Could not resolve URL'
-        }
+      document.dispatchEvent(new CustomEvent('cdl-resolution-progress', {
+        detail: { runId, completed: ++prepared, total: files.length }
       }));
-    }
-
-    if (validFiles.length > 0) {
-      chrome.runtime.sendMessage({
-        action: 'download_batch',
-        files: validFiles
-      });
-    }
-
-    return { success: true, resolved: validFiles.length, failed: failedFiles.length };
+      if (!url) document.dispatchEvent(new CustomEvent('cdl-file-status', {
+        detail: { action: 'download_file_status', runId, href: file.href, status: 'error', error: 'Could not resolve URL' }
+      }));
+      return result;
+    };
+    const resolved = api.mapLimit ? await api.mapLimit(files, 4, resolve) : await Promise.all(files.map(resolve));
+    const valid = api.uniqueFiles(resolved.filter(file => file.url), file => file.url);
+    const failed = resolved.filter(file => !file.url).length;
+    if (valid.length) await chrome.runtime.sendMessage({
+      action: zip ? 'download_batch_zip' : 'download_batch', files: valid,
+      zipName: courseName || api.getCourseName(), runId, initialErrors: failed
+    });
+    return { success: valid.length > 0, resolved: valid.length, failed };
   }
 
-  /**
-   * Resolve a batch of file URLs and send valid ones to be bundled into a
-   * single .zip and downloaded. URL resolution is identical to
-   * resolveAndDownloadBatch — only what happens after resolution differs.
-   * @returns {Promise<{success: boolean, resolved: number, failed: number}>}
-   */
-  async function resolveAndDownloadBatchZip(files, courseName) {
-    if (window.CanvasDownloader.DEBUG) console.log(`[CDL] Batch resolve (zip): ${files.length} files`);
-
-    const resolvedFiles = await Promise.all(files.map(async (file) => {
-      const resolvedUrl = await window.CanvasDownloader.resolveFileUrl(file);
-      return {
-        url: resolvedUrl,
-        filename: file.resolvedName || file.text,
-        courseName: file.courseName,
-        originalHref: file.href,
-        type: file.resolvedType || file.type
-      };
-    }));
-
-    const validFiles = resolvedFiles.filter(f => f.url);
-    const failedFiles = resolvedFiles.filter(f => !f.url);
-
-    for (const failed of failedFiles) {
-      document.dispatchEvent(new CustomEvent('cdl-file-status', {
-        detail: {
-          action: 'download_file_status',
-          href: failed.originalHref,
-          status: 'error',
-          error: 'Could not resolve URL'
-        }
-      }));
-    }
-
-    if (validFiles.length > 0) {
-      chrome.runtime.sendMessage({
-        action: 'download_batch_zip',
-        files: validFiles,
-        zipName: courseName || 'Canvas_Files'
-      });
-    }
-
-    return { success: true, resolved: validFiles.length, failed: failedFiles.length };
+  function resolveAndDownloadBatch(files, runId) {
+    return prepareDownloadBatch(files, window.CanvasDownloader.getCourseName(), false, runId);
+  }
+  function resolveAndDownloadBatchZip(files, courseName, runId) {
+    return prepareDownloadBatch(files, courseName, true, runId);
   }
 
   // ============================================================
@@ -619,6 +590,13 @@ if (window.__cdlContentScriptLoaded) {
       return;
     }
 
+    if (detail.action === 'get_course_state') { sendResponse(courseState); return; }
+    if (detail.action === 'scan_course') {
+      startCourseScan(!!detail.force);
+      sendResponse({ success: true });
+      return;
+    }
+
     if (detail.action === 'resolve_and_download') {
       try {
         sendResponse(await resolveAndDownloadSingle(detail.file));
@@ -630,7 +608,7 @@ if (window.__cdlContentScriptLoaded) {
 
     if (detail.action === 'resolve_and_download_batch') {
       try {
-        sendResponse(await resolveAndDownloadBatch(detail.files || []));
+        sendResponse(await resolveAndDownloadBatch(detail.files || [], detail.runId));
       } catch (err) {
         sendResponse({ success: false, error: err.toString() });
       }
@@ -639,7 +617,7 @@ if (window.__cdlContentScriptLoaded) {
 
     if (detail.action === 'resolve_and_download_batch_zip') {
       try {
-        sendResponse(await resolveAndDownloadBatchZip(detail.files || [], detail.courseName));
+        sendResponse(await resolveAndDownloadBatchZip(detail.files || [], detail.courseName, detail.runId));
       } catch (err) {
         sendResponse({ success: false, error: err.toString() });
       }
@@ -697,14 +675,14 @@ if (window.__cdlContentScriptLoaded) {
     }
 
     if (msg.action === 'resolve_and_download_batch') {
-      resolveAndDownloadBatch(msg.files || [])
+      resolveAndDownloadBatch(msg.files || [], msg.runId)
         .then(result => sendResponse(result))
         .catch(err => sendResponse({ success: false, error: err.toString() }));
       return true;
     }
 
     if (msg.action === 'resolve_and_download_batch_zip') {
-      resolveAndDownloadBatchZip(msg.files || [], msg.courseName)
+      resolveAndDownloadBatchZip(msg.files || [], msg.courseName, msg.runId)
         .then(result => sendResponse(result))
         .catch(err => sendResponse({ success: false, error: err.toString() }));
       return true;

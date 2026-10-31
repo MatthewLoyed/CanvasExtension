@@ -37,6 +37,16 @@
     let isDownloading = false;
     let selectedHrefs = new Set();
     let zipEnabled = false;
+    const pendingSingles = new Set();
+    const courseSelection = window.CanvasDownloader.CourseSelection ? new window.CanvasDownloader.CourseSelection() : null;
+    let courseMode = !!window.CanvasDownloader.isModuleListPage?.();
+    let courseState = { groups: [], scanning: false, complete: false, error: '' };
+    const expandedModules = new Set();
+    let activeRunId = null;
+    let runFiles = [];
+    let runZip = false;
+    const failedFiles = new Set();
+    const fileStatuses = new Map();
 
     function injectToolbar() {
         const iconUrl = chrome.runtime.getURL('assets/icons/icon32.png');
@@ -52,18 +62,29 @@
 
         if (collapseAllBtn && collapseAllBtn.parentNode) {
             collapseAllBtn.parentNode.insertBefore(toolbar, collapseAllBtn);
+        } else if (contentArea) {
+            contentArea.insertBefore(toolbar, contentArea.firstChild);
         } else if (headerBarRight) {
             headerBarRight.insertBefore(toolbar, headerBarRight.firstChild);
         } else if (breadcrumbs && breadcrumbs.parentNode) {
             breadcrumbs.parentNode.insertBefore(toolbar, breadcrumbs.nextSibling);
-        } else if (contentArea) {
-            contentArea.insertBefore(toolbar, contentArea.firstChild);
         } else if (headerBar) {
             headerBar.insertBefore(toolbar, headerBar.firstChild);
         }
 
         // Bind events
         bindEvents();
+        const nav = document.getElementById('cdl-course-nav');
+        nav.hidden = !window.CanvasDownloader.extractCourseId() || !!window.CanvasDownloader.isModuleListPage?.();
+        document.getElementById('cdl-browse-course').addEventListener('click', () => {
+            courseMode = true;
+            startCourseScan();
+        });
+        document.getElementById('cdl-back-page').addEventListener('click', () => { courseMode = false; renderFiles(); });
+        document.getElementById('cdl-retry-failed').addEventListener('click', () => {
+            const retry = runFiles.filter(file => failedFiles.has(window.CanvasDownloader.getResourceKey(file.href)));
+            if (!isDownloading && retry.length) downloadSelected(retry, runZip);
+        });
     }
 
     // ============================================================
@@ -79,8 +100,9 @@
 
         // Main button: Instantly download the current selection
         mainBtn.addEventListener('click', (e) => {
+            e.preventDefault();
             e.stopPropagation();
-            if (currentFiles.length === 0 || isDownloading) return;
+            if ((courseMode && courseSelection ? courseSelection.files().length : currentFiles.length) === 0 || isDownloading) return;
             downloadSelected();
             // Optional: close dropdown if it was open
             isDropdownOpen = false;
@@ -90,6 +112,7 @@
 
         // Toggle button: View file list
         toggleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
             e.stopPropagation();
             isDropdownOpen = !isDropdownOpen;
             dropdown.classList.toggle('cdl-dropdown-open', isDropdownOpen);
@@ -98,14 +121,16 @@
 
         // Hidden "Download Selected" inside dropdown (optional backup)
         downloadAllBtn.addEventListener('click', (e) => {
+            e.preventDefault();
             e.stopPropagation();
-            if (currentFiles.length === 0 || isDownloading) return;
+            if ((courseMode && courseSelection ? courseSelection.files().length : currentFiles.length) === 0 || isDownloading) return;
             downloadSelected();
         });
 
         // Select all / none
         if (selectAllCheckbox) {
             selectAllCheckbox.addEventListener('change', (e) => {
+                if (courseMode && courseSelection) { courseSelection.selectAll(e.target.checked); renderFiles(); return; }
                 selectedHrefs = e.target.checked ? new Set(currentFiles.map(f => f.href)) : new Set();
                 renderFiles();
             });
@@ -122,9 +147,11 @@
         const rescanBtn = document.getElementById('cdl-rescan-btn');
         if (rescanBtn) {
             rescanBtn.addEventListener('click', (e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 // Prevent clicking while a scan is already in progress
                 if (rescanBtn.classList.contains('is-spinning')) return;
+                if (courseMode) { startCourseScan(true); return; }
                 // Immediately clear the file list in the UI so the user sees it reset
                 currentFiles = [];
                 selectedHrefs = new Set();
@@ -165,7 +192,7 @@
             const container = document.createElement('span');
             container.className = 'cdl-inline-btn-container';
             container.innerHTML = `
-        <button class="cdl-inline-btn" title="Download this file with Canvas Downloader">
+        <button type="button" class="cdl-inline-btn" title="Download this file with Canvas Downloader">
           <svg viewBox="0 0 16 16" fill="currentColor">
             <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
             <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
@@ -182,7 +209,9 @@
                 e.stopPropagation();
 
                 const btn = e.currentTarget;
-                if (btn.classList.contains('is-loading')) return;
+                const key = window.CanvasDownloader.getResourceKey(href);
+                if (pendingSingles.has(key)) return;
+                pendingSingles.add(key);
 
                 btn.classList.add('is-loading');
 
@@ -192,6 +221,7 @@
                     file: file
                 }, (response) => {
                     if (!response || !response.success) {
+                        pendingSingles.delete(key);
                         btn.classList.remove('is-loading');
                         btn.classList.add('is-error');
                         setTimeout(() => btn.classList.remove('is-error'), 2000);
@@ -206,11 +236,7 @@
     }
 
     function getCourseNameFromPage() {
-        const crumbs = document.querySelectorAll('#breadcrumbs ul li');
-        if (crumbs && crumbs.length >= 2) {
-            return crumbs[1].innerText.trim();
-        }
-        return "General";
+        return window.CanvasDownloader.getCourseName();
     }
 
     // ============================================================
@@ -220,10 +246,48 @@
     // Re-render the file list with current selection state and refresh the
     // action button label. Central place any selection/list change goes through.
     function renderFiles() {
-        window.CanvasDownloaderUI.renderFileList(currentFiles, downloadSingle, selectedHrefs, onToggleSelect);
+        if (courseMode && courseSelection) {
+            window.CanvasDownloaderUI.renderCourseList(courseSelection, renderFiles, downloadSingle, expandedModules);
+            const summary = document.getElementById('cdl-run-summary');
+            if (!isDownloading) {
+                summary.hidden = false;
+                summary.textContent = courseState.error || (courseState.scanning ?
+                    `Scanning modules ${courseState.completed || 0}/${courseState.total || '…'}…` :
+                    `${courseSelection.files().length} unique files selected across modules`);
+            }
+        } else {
+            window.CanvasDownloaderUI.renderFileList(currentFiles, downloadSingle, selectedHrefs, onToggleSelect);
+            if (!isDownloading) document.getElementById('cdl-run-summary').hidden = true;
+        }
+        const subtitle = document.querySelector('.cdl-info-subtitle');
+        if (subtitle) subtitle.textContent = courseMode ? 'Course modules' : 'Individual files';
+        const back = document.getElementById('cdl-back-page');
+        const browse = document.getElementById('cdl-browse-course');
+        if (back) back.hidden = !courseMode;
+        if (browse) browse.hidden = courseMode;
+        fileStatuses.forEach(msg => applyFileStatus(msg));
         updateActionLabel();
         syncSelectAllCheckbox();
     }
+
+    function startCourseScan(force = false) {
+        courseState = { ...courseState, scanning: true, error: '' };
+        renderFiles();
+        sendToContentScript({ action: 'scan_course', force }, response => {
+            if (!response?.success) { courseState = { ...courseState, scanning: false, error: 'Could not scan this course. Try rescan.' }; renderFiles(); }
+        });
+    }
+
+    document.addEventListener('cdl-course-state', event => {
+        const firstGroups = courseSelection && courseSelection.groups.length === 0;
+        courseState = event.detail;
+        if (!courseSelection) return;
+        courseSelection.update(courseState.groups || []);
+        if (firstGroups && courseState.groups?.length) expandedModules.add(courseState.groups[0].id);
+        const rescan = document.getElementById('cdl-rescan-btn');
+        if (rescan) rescan.classList.toggle('is-spinning', courseState.scanning);
+        if (document.getElementById('cdl-toolbar')) renderFiles();
+    });
 
     function onToggleSelect(href, checked) {
         if (checked) selectedHrefs.add(href);
@@ -235,31 +299,43 @@
     function syncSelectAllCheckbox() {
         const selectAllCheckbox = document.getElementById('cdl-select-all-checkbox');
         if (!selectAllCheckbox) return;
-        const total = currentFiles.length;
-        const selected = selectedHrefs.size;
+        const total = courseMode && courseSelection ? window.CanvasDownloader.uniqueFiles(courseSelection.groups.flatMap(group => group.files)).length : currentFiles.length;
+        const selected = courseMode && courseSelection ? courseSelection.files().length : selectedHrefs.size;
         selectAllCheckbox.checked = total > 0 && selected === total;
         selectAllCheckbox.indeterminate = selected > 0 && selected < total;
     }
 
+    function visibleFileCount() {
+        return courseMode && courseSelection ? window.CanvasDownloader.uniqueFiles(courseSelection.groups.flatMap(group => group.files)).length : currentFiles.length;
+    }
     function updateActionLabel() {
-        const total = currentFiles.length;
-        const selected = selectedHrefs.size;
+        const total = courseMode && courseSelection ? window.CanvasDownloader.uniqueFiles(courseSelection.groups.flatMap(group => group.files)).length : currentFiles.length;
+        const selected = courseMode && courseSelection ? courseSelection.files().length : selectedHrefs.size;
         const label = (selected === total) ? 'Download All' : `Download Selected (${selected})`;
 
         const mainTitle = document.querySelector('.cdl-main-title');
         const downloadAllText = document.getElementById('cdl-download-all-text');
         if (mainTitle) mainTitle.textContent = label;
         if (downloadAllText) downloadAllText.textContent = label;
+        const button = document.getElementById('cdl-main-btn');
+        if (button) button.disabled = isDownloading || selected === 0 || (courseMode && (courseState.scanning || !courseState.complete || !!courseState.error));
     }
 
     // ============================================================
     // Download Actions
     // ============================================================
-    function downloadSelected() {
-        const filesToDownload = currentFiles.filter(f => selectedHrefs.has(f.href));
+    function downloadSelected(override, zipOverride) {
+        const filesToDownload = override || (courseMode && courseSelection ? courseSelection.files() : currentFiles.filter(f => selectedHrefs.has(f.href)));
         if (filesToDownload.length === 0) return;
 
+        activeRunId = `cdl-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        runFiles = filesToDownload.map(file => ({ ...file }));
+        runZip = zipOverride === undefined ? zipEnabled : zipOverride;
+        failedFiles.clear();
+        document.getElementById('cdl-retry-failed').hidden = true;
+
         isDownloading = true;
+        updateActionLabel();
         const btnGroup = document.getElementById('cdl-button-group');
         const progressBar = document.getElementById('cdl-loading-bar');
 
@@ -275,22 +351,30 @@
 
         // Send batch to content.js for URL resolution → then service worker for download
         sendToContentScript({
-            action: zipEnabled ? 'resolve_and_download_batch_zip' : 'resolve_and_download_batch',
-            files: filesToDownload,
+            action: runZip ? 'resolve_and_download_batch_zip' : 'resolve_and_download_batch',
+            files: runFiles,
+            runId: activeRunId,
             courseName: getCourseNameFromPage()
         }, (response) => {
-            if (response && response.success) {
+            if (response && response.success && response.resolved !== 0) {
                 // Initial progress update
-                progressBar.style.width = '5%';
+                if (isDownloading) progressBar.style.width = `${Math.max(5, parseFloat(progressBar.style.width) || 0)}%`;
             } else {
                 isDownloading = false;
                 btnGroup.classList.remove('is-loading');
-                alert('Could not start batch download.');
+                const summary = document.getElementById('cdl-run-summary');
+                summary.hidden = false;
+                summary.textContent = response?.error || 'No files could be downloaded. Retry the failed files.';
+                document.getElementById('cdl-retry-failed').hidden = failedFiles.size === 0;
+                updateActionLabel();
             }
         });
     }
 
     function downloadSingle(file, itemElement) {
+        const key = window.CanvasDownloader.getResourceKey(file.href);
+        if (pendingSingles.has(key)) return;
+        pendingSingles.add(key);
         setFileItemStatus(itemElement, 'loading');
 
         sendToContentScript({
@@ -298,6 +382,7 @@
             file: file
         }, (response) => {
             if (!response || !response.success) {
+                pendingSingles.delete(key);
                 setFileItemStatus(itemElement, 'error');
             }
             // Status will be updated by download_file_status message listener
@@ -372,10 +457,27 @@
     // Per-File Status Handler (shared by service worker messages + DOM events)
     // ============================================================
     function handleFileStatus(msg) {
-        const item = document.querySelector(`.cdl-file-item[data-href="${CSS.escape(msg.href)}"]`);
-        if (item) {
-            setFileItemStatus(item, msg.status);
+        fileStatuses.set(window.CanvasDownloader.getResourceKey(msg.href), msg);
+        if (msg.runId === activeRunId && activeRunId) {
+            const key = window.CanvasDownloader.getResourceKey(msg.href);
+            if (msg.status === 'error') failedFiles.add(key);
+            else if (msg.status === 'success') failedFiles.delete(key);
         }
+        if (msg.status === 'success' || msg.status === 'error') {
+            pendingSingles.delete(window.CanvasDownloader.getResourceKey(msg.href));
+        }
+        if (!isDownloading && msg.status === 'success') {
+            failedFiles.delete(window.CanvasDownloader.getResourceKey(msg.href));
+            const retry = document.getElementById('cdl-retry-failed');
+            if (retry) retry.hidden = failedFiles.size === 0;
+        }
+        applyFileStatus(msg);
+    }
+
+    function applyFileStatus(msg) {
+        document.querySelectorAll('.cdl-file-item[data-href]').forEach(item => {
+            if (window.CanvasDownloader.getResourceKey(item.dataset.href) === window.CanvasDownloader.getResourceKey(msg.href)) setFileItemStatus(item, msg.status);
+        });
 
         // Also update inline buttons
         const inlineBtn = document.querySelector(`a[data-cdl-href="${CSS.escape(msg.href)}"]`)?.nextElementSibling?.querySelector('.cdl-inline-btn');
@@ -404,6 +506,7 @@
     // Listen for Progress Updates from Service Worker
     // ============================================================
     chrome.runtime.onMessage.addListener((msg) => {
+        if ((msg.action === 'download_progress' || msg.action === 'download_zip_progress') && activeRunId && msg.runId !== activeRunId) return;
         // Per-file status update (from download engine via service worker)
         if (msg.action === 'download_file_status') {
             handleFileStatus(msg);
@@ -416,6 +519,9 @@
             const btnGroup = document.getElementById('cdl-button-group');
             const progressBar = document.getElementById('cdl-loading-bar');
             const countBadge = document.getElementById('cdl-file-count');
+            const summary = document.getElementById('cdl-run-summary');
+            summary.hidden = false;
+            summary.textContent = `${msg.completed} downloaded, ${msg.errors || 0} failed of ${msg.total}`;
 
             if (btnGroup && progressBar) {
                 if (msg.done) {
@@ -423,15 +529,19 @@
                     btnGroup.classList.remove('is-loading');
                     btnGroup.classList.add('is-success');
                     isDownloading = false;
+                    document.getElementById('cdl-retry-failed').hidden = failedFiles.size === 0;
+                    updateActionLabel();
+                    const successText = document.querySelector('#cdl-success-state span');
+                    if (successText) successText.textContent = msg.errors ? 'Finished with failures' : 'Downloaded!';
 
                     // Reset after viewing success state for 3 seconds
                     setTimeout(() => {
                         btnGroup.classList.remove('is-success');
                         progressBar.style.width = '0%';
-                        if (countBadge) countBadge.textContent = `(${currentFiles.length} File${currentFiles.length === 1 ? '' : 's'})`;
+                        if (countBadge) countBadge.textContent = `(${visibleFileCount()} File${visibleFileCount() === 1 ? '' : 's'})`;
                     }, 3000);
                 } else {
-                    const percent = Math.round((msg.completed / msg.total) * 100);
+                    const percent = Math.round(((msg.completed + (msg.errors || 0)) / msg.total) * 100);
                     progressBar.style.width = `${Math.max(5, percent)}%`;
                     if (countBadge) countBadge.textContent = `(${msg.completed}/${msg.total})`;
                 }
@@ -452,7 +562,12 @@
                 btnGroup.classList.remove('is-loading');
                 isDownloading = false;
                 progressBar.style.width = '0%';
-                alert('Could not build the zip download. See console for details.');
+                const summary = document.getElementById('cdl-run-summary');
+                summary.hidden = false;
+                summary.textContent = 'Could not save the ZIP. Retry the failed files.';
+                runFiles.forEach(file => failedFiles.add(window.CanvasDownloader.getResourceKey(file.href)));
+                document.getElementById('cdl-retry-failed').hidden = false;
+                updateActionLabel();
                 return;
             }
 
@@ -467,12 +582,17 @@
                 btnGroup.classList.remove('is-loading');
                 btnGroup.classList.add('is-success');
                 isDownloading = false;
+                const summary = document.getElementById('cdl-run-summary');
+                summary.hidden = false;
+                summary.textContent = `${msg.completed} files in ZIP, ${msg.errors || 0} failed`;
+                document.getElementById('cdl-retry-failed').hidden = failedFiles.size === 0;
+                updateActionLabel();
 
                 setTimeout(() => {
                     btnGroup.classList.remove('is-success');
                     progressBar.style.width = '0%';
                     if (successState) successState.querySelector('span').textContent = 'Downloaded!';
-                    if (countBadge) countBadge.textContent = `(${currentFiles.length} File${currentFiles.length === 1 ? '' : 's'})`;
+                    if (countBadge) countBadge.textContent = `(${visibleFileCount()} File${visibleFileCount() === 1 ? '' : 's'})`;
                 }, 3000);
                 return;
             }
@@ -484,18 +604,26 @@
         }
     });
 
+    document.addEventListener('cdl-resolution-progress', event => {
+        if (!isDownloading || event.detail.runId !== activeRunId) return;
+        const summary = document.getElementById('cdl-run-summary');
+        summary.hidden = false;
+        summary.textContent = `Preparing ${event.detail.completed}/${event.detail.total} files…`;
+    });
+
     // ============================================================
     // Listen for File Data from content.js
     // ============================================================
     document.addEventListener('cdl-files-ready', (e) => {
         if (e.detail && e.detail.files) {
+            const previousHrefs = new Set(currentFiles.map(f => f.href));
             currentFiles = e.detail.files;
             // Default-select any file we haven't seen before; drop hrefs that
             // no longer exist. Keeps "download everything" as the default on
             // first load/rescan while preserving in-session deselections.
             const currentHrefs = new Set(currentFiles.map(f => f.href));
             selectedHrefs.forEach(href => { if (!currentHrefs.has(href)) selectedHrefs.delete(href); });
-            currentFiles.forEach(f => { if (!selectedHrefs.has(f.href)) selectedHrefs.add(f.href); });
+            currentFiles.forEach(f => { if (!previousHrefs.has(f.href)) selectedHrefs.add(f.href); });
 
             renderFiles();
             // Inject inline buttons whenever file data is ready/updated
@@ -560,6 +688,7 @@
                     injectInlineButtons();
                 }
             });
+            if (courseMode && courseSelection) startCourseScan();
         }, 50);
 
         // Periodically check for new links that might have been rendered

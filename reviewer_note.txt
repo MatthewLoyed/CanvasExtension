@@ -1,25 +1,21 @@
-### Tester Instructions for Download Functionality:
+Canvas Downloader v1.12.0 — reviewer instructions
 
-To verify the "Canvas Downloader" functionality:
+This update adds offline export of available course content to the existing module/file downloader. No new permissions or login flow were added. All executable code and libraries are bundled in the package; there is no remotely hosted executable code.
 
-1. **Login Required**: Log in to a Canvas LMS instance (e.g., https://canvas.instructure.com or your university's Canvas URL).
-   * Note: The extension only activates on domains matching `*.instructure.com` or specific university Canvas domains.
-2. **Navigate**: Go to a course page that contains files (e.g., "Modules" or "Files" section).
-3. **Verify UI Injection**: The extension will automatically detect the page type and inject download buttons directly into the Canvas interface.
-   * *Success Indicator*: You should see a "Download All" button injected above module headers, or an individual download icon added to Canvas's file rows.
-   * *Extension Popup*: You can also click the extension icon in the Chrome toolbar to verify its active status or change download folder preferences.
-4. **Test Single Download**: Click the download icon injected next to any file row.
-   * **Expected Result**: The file successfully downloads via the browser's native download manager.
-   * **Note on Spinners**: You may see a brief spinner. This is the **Recursive URL Unpacker** / API resolver active (see below).
-5. **Test Bulk Download**: Click the "Download All" button injected into the Canvas UI.
-   * **Expected Result**: All detected files will sequence through and download seamlessly.
-6. **Test Deep Scan**: On a 'Modules' page, the extension will automatically scan inside Canvas wiki pages to surface embedded files. Wait for "Scanning Pages..." to finish to see the files appear in the toolbar.
-   * **Refresh list**: Click the refresh icon on the toolbar to re-trigger a full page scrape and deep scan.
+Sign in using a reviewer-controlled Canvas student account with an enrolled course. No university credentials or private course content are supplied in this package. Canvas is detected by page structure, including custom school domains.
 
-**Logic Update Note (The "HTML Fix")**: 
-We have implemented an **Authenticated API Proxy** to specifically fix the issue where intermediate policy pages (HTML wrappers) were being downloaded instead of the PDF.
+Offline export:
+1. Open the Canvas dashboard. Each classic course card has an Export course button. The same action is available inside a course page.
+2. Click Export course. It immediately starts an export of available pages, announcements, assignment instructions, files, and images into one ZIP. There is no selection or incomplete-discovery acknowledgement step.
+3. Confirm the dialog reports current stages, current file, estimated attachment percentage, and ZIP generation progress. Close the dialog while running; the active course button shows progress and reopens the same run.
+4. When saved, extract the ZIP and open index.html. Check readable saved HTML, local attachments, and links between included content. export-report.html and manifest.json explain excluded/locked/failed content and collection restrictions.
+5. If content is unavailable, the export may still complete with a partial archive. Quizzes, grades, student submissions, recordings, external tools, and external-site copies are excluded. Canvas may deny a collection listing while allowing individual module-linked items. This is not a complete course backup.
+6. If downloads fail, Retry missing items revalidates access and attempts failed files again. A new ZIP is saved. Cancelling stops pending work. Leaving the Canvas page interrupts an active export.
 
-1.  **API Delegation**: Instead of scraping HTML, the extension identifies the internal Canvas File ID.
-2.  **Session Proxy**: It delegates the resolution to a background "Proxy" (via the Content Script). This ensures the request uses the user's active login cookies.
-3.  **Direct Cluster Resolution**: It fetches the direct binary URL from the official Canvas API (`/api/v1/files/[ID]`).
-4.  **Security**: If a direct API link cannot be resolved, it falls back to a **Recursive URL Unpacker** that searches the HTML for a source link, ensuring the user always gets the actual resource and never a broken `.htm` wrapper.
+Existing file/module behavior:
+- On Modules, use the dropdown to select modules/files and save separately or as a ZIP.
+- On another course page, Browse course modules opens the module picker; Back to this page restores the page file list.
+- Shared resources deduplicate by Canvas file identity. Distinct files with identical names are preserved. HTML and QMD attachments remain supported.
+
+Technical notes:
+Canvas API reads use the existing signed-in session, bounded queues, account verification, retries/backoff, and cancellation. Files are downloaded from the current Canvas origin or supported Canvas file-storage hosts. Permission failures and authentication failures are handled; access restrictions are not bypassed. HTML content is sanitized with bundled DOMPurify. The offline reader has a restrictive content security policy and runs without scripts. Course content and files are processed locally, not uploaded to developer servers. The extension does not request grades or student submissions.

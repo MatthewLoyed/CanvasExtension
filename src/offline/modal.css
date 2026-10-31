@@ -1,0 +1,12 @@
+.cdl-export-card-action{padding:10px 12px;border-top:1px solid rgba(128,128,128,.2)}
+.cdl-export-course-button{font:600 13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer;border:1px solid var(--ic-brand-primary,#0374b5);color:var(--ic-brand-primary,#0374b5);border-radius:4px;background:var(--ic-brand-global-nav-menu-item__text-color--active,#fff);padding:7px 12px}
+#cdl-save-offline{margin:8px 8px 12px 0}
+.cdl-export-course-button{max-width:100%;vertical-align:middle}
+.cdl-export-button-label{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cdl-export-course-button progress{display:block;width:100%;height:5px;margin:5px 0 0;accent-color:#fff;pointer-events:none}
+.cdl-export-course-button progress[hidden]{display:none!important}
+.cdl-export-running{width:100%;text-align:left}
+.cdl-export-course-button{transition:transform .16s,box-shadow .16s}
+.cdl-export-course-button:hover{transform:translateY(-1px);box-shadow:0 3px 9px #086baf40}
+.cdl-export-course-button:active{transform:translateY(0)}
+@media(prefers-reduced-motion:reduce){.cdl-export-course-button{transition:none}.cdl-export-course-button:hover{transform:none}}

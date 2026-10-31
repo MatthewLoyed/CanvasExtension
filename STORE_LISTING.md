@@ -1,11 +1,22 @@
-Canvas Downloader: The Ultimate Resource Saver
+Canvas Downloader: Save Course Content and Files
 
-Don't waste hours manually clicking "Save Link As" for every lecture slide. Canvas Downloader scans your current course page (Modules, Files, or Assignments) to find resources instantly. One click is all it takes to download all the files on your screen.
+Save available Canvas course materials with fewer clicks. Export a course for offline reading, or download selected module attachments.
 
-Key Productivity Features
-⚡ Bulk Download Canvas Files: Automatically identifies all lecture slides, PDFs, and spreadsheets on any Canvas course page.
-� Deep Scanning: The extension automatically scans inside your Canvas Pages within a Module to extract embedded files without you ever having to click through them.
-�🛡️ Smart Canvas API Integration: Uses your existing session to safely resolve direct download links for all your course materials.
-🌐 Works for any Canvas page!: Whether it's Modules, Files, or Assignments, your resources are just one click away.
+New in version 1.12.0: Offline course export
+Click Export course next to a course on your Canvas dashboard, or from inside the course. The extension saves available pages, announcements, assignment instructions, files, and images in one ZIP. Extract the ZIP and open index.html for a readable offline index with local attachments and links between saved content.
+
+Follow the current export stage, estimated attachment progress, and ZIP creation in a compact dialog. Close the dialog to keep browsing the dashboard; the course button continues showing progress and can reopen the dialog. Stay on that Canvas page until the export finishes. Bounded parallel discovery and downloads help larger exports finish sooner. Retry missing files if a download fails.
+
+Know what was saved
+The ZIP includes export-report.html with skipped content, unavailable items, and collection restrictions. Exports depend on what your Canvas login can access. Locked or undiscoverable content may be absent. External links can still require internet access. Recordings, external tools, quiz content, grades, and student submissions are not included. This is an offline snapshot of available supported content, not a complete course backup or Canvas import package.
+
+Module and page downloads
+- Select whole modules or individual files and download separately or as a course-named ZIP.
+- Module downloads use module folders. Shared Canvas files are saved once; distinct files with matching names are preserved.
+- Find direct module files and attachments linked inside Canvas content, including images, HTML slides, and Quarto source.
+- Keep the current page's file list or browse course modules.
+- Track completed saves and retry failed files. ZIP retries create a separate archive.
+
+Uses your existing Canvas login. Course content is processed locally and is not uploaded to the developer's servers. No new permissions were added for offline export.
 
 Disclaimer: This independent project is not affiliated with or endorsed by Instructure Inc. or Canvas LMS.

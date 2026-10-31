@@ -395,13 +395,11 @@
 .cdl-zip-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #444;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
   cursor: pointer;
   user-select: none;
   transition: all 0.2s ease;
@@ -424,7 +422,9 @@
 .cdl-select-all-row {
   display: flex;
   align-items: center;
-  padding: 6px 16px;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
   border-bottom: 1px solid #f0f0f0;
   background: #fafbfc;
 }
@@ -438,6 +438,15 @@
   color: #666;
   cursor: pointer;
   user-select: none;
+  margin: 0;
+}
+
+#cdl-toolbar input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex-shrink: 0;
+  vertical-align: middle;
 }
 
 .cdl-select-all-label input[type="checkbox"] {
@@ -450,11 +459,33 @@
    File List
    ============================================================ */
 .cdl-file-list {
-  max-height: 300px;
+  max-height: 360px;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 4px 0;
 }
+
+#cdl-toolbar [hidden] { display: none !important; }
+.cdl-course-nav { padding: 8px 14px; border-bottom: 1px solid #e2e8f0; }
+.cdl-course-nav button, .cdl-retry-failed {
+  background: transparent; border: 0; color: #0369a1; font-size: 12px;
+  padding: 4px 0; cursor: pointer; text-align: left;
+}
+.cdl-run-summary { padding: 8px 14px; color: #475569; background: #f8fafc; font-size: 12px; }
+.cdl-retry-failed { margin: 4px 14px 8px; }
+.cdl-module { border-bottom: 1px solid #e2e8f0; }
+.cdl-module summary {
+  display: grid; grid-template-columns: 16px minmax(0, 1fr) auto 10px;
+  gap: 10px; align-items: center; padding: 12px 14px;
+  color: #334155; background: #f8fafc; cursor: pointer; list-style: none;
+}
+.cdl-module summary::-webkit-details-marker { display: none; }
+.cdl-module summary::after { content: '›'; font-size: 18px; }
+.cdl-module[open] summary::after { transform: rotate(90deg); }
+.cdl-module-name { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.cdl-module-count { font-size: 11px; color: #64748b; white-space: nowrap; }
+.cdl-module > div { font-size: 12px; color: #64748b; }
+.cdl-module .cdl-file-item { padding-left: 30px; }
 
 .cdl-file-list::-webkit-scrollbar {
   width: 6px;
@@ -466,10 +497,11 @@
 }
 
 .cdl-file-item {
-  display: flex;
+  display: grid;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 16px;
+  grid-template-columns: 16px minmax(0, 1fr) 32px;
+  column-gap: 12px;
+  padding: 9px 14px;
   border-bottom: 1px solid #f0f0f0;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   background: #fff;
@@ -481,20 +513,19 @@
 
 .cdl-file-item:hover {
   background: #f8fafc;
-  transform: translateX(4px);
 }
 
 .cdl-file-checkbox {
   accent-color: #0076a8;
   cursor: pointer;
-  margin: 0 10px 0 0;
+  margin: 0;
   flex-shrink: 0;
 }
 
 .cdl-file-info {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
   flex: 1;
 }
@@ -504,6 +535,8 @@
   align-items: center;
   justify-content: center;
   padding: 2px 6px;
+  min-width: 38px;
+  box-sizing: border-box;
   border-radius: 5px;
   font-size: 9px;
   font-weight: 800;
@@ -518,8 +551,9 @@
 
 /* Modern File Type Colors (White Background + Tinted Border + Bold Text) */
 .cdl-badge-pdf {
-  color: #dc2626;
-  border-color: #fecaca;
+  color: #b91c1c;
+  background: #fff1f2;
+  border-color: #fda4af;
 }
 
 .cdl-badge-xlsx,
@@ -536,8 +570,9 @@
 
 .cdl-badge-pptx,
 .cdl-badge-ppt {
-  color: #ea580c;
-  border-color: #ffedd5;
+  color: #9a3412;
+  background: #fff3e6;
+  border-color: #fdba74;
 }
 
 .cdl-badge-zip {
