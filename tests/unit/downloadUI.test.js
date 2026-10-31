@@ -52,6 +52,22 @@ describe('injected download controls', () => {
         expect(requests.filter(r => r.action === 'resolve_and_download')).toHaveLength(2);
     });
 
+    test('native Canvas download links do not get extra extension controls', () => {
+        const content = document.getElementById('content');
+        content.insertAdjacentHTML('beforeend', '<p><a data-cdl-link="true" data-cdl-href="https://school.example.edu/files/42/download" data-cdl-text="Notes.pdf" data-cdl-type=".pdf">Notes.pdf</a><a class="file_download_btn" data-cdl-link="true" data-cdl-href="https://school.example.edu/files/42/download">Download</a><a download data-cdl-link="true" data-cdl-href="https://school.example.edu/files/42/download"><svg></svg></a></p>');
+        publish([file]);
+        expect(content.querySelectorAll('.cdl-inline-btn-container')).toHaveLength(1);
+        const link = content.querySelector('p a');
+        link.insertAdjacentHTML('afterend', '<span class="canvas-preview">Preview</span>');
+        jest.advanceTimersByTime(6000);
+        publish([file]);
+        expect(content.querySelectorAll('.cdl-inline-btn-container')).toHaveLength(1);
+        expect(content.querySelector('.file_download_btn')).not.toBeNull();
+        content.querySelector('.cdl-inline-btn-container').remove();
+        publish([file]);
+        expect(content.querySelectorAll('.cdl-inline-btn-container')).toHaveLength(1);
+    });
+
     test('incoming scan results preserve deselection and select newly discovered files', () => {
         document.querySelector('.cdl-file-checkbox').click();
         publish([file, { ...file, href: 'https://school.example.edu/files/43/download' }]);

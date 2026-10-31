@@ -177,13 +177,22 @@
     // ============================================================
     // Inline Button Injection
     // ============================================================
+    const inlineControls = new WeakMap();
     function injectInlineButtons() {
         const links = document.querySelectorAll('a[data-cdl-link="true"]');
         const courseName = getCourseNameFromPage();
 
         links.forEach(link => {
-            // Avoid double-injection
-            if (link.nextElementSibling && link.nextElementSibling.classList.contains('cdl-inline-btn-container')) return;
+            // Native Canvas controls must not receive extension controls of their own.
+            if (link.matches('.file_download_btn, .file_download_link') ||
+                (link.hasAttribute('download') && !link.textContent.trim())) return;
+            // Canvas may insert preview controls between our button and its link.
+            const owned = inlineControls.get(link);
+            if (owned?.isConnected) return;
+            if (link.nextElementSibling?.classList.contains('cdl-inline-btn-container')) {
+                inlineControls.set(link, link.nextElementSibling);
+                return;
+            }
 
             const href = link.getAttribute('data-cdl-href');
             const text = link.getAttribute('data-cdl-text');
@@ -232,6 +241,7 @@
 
             // Insert after the link
             link.insertAdjacentElement('afterend', container);
+            inlineControls.set(link, container);
         });
     }
 
