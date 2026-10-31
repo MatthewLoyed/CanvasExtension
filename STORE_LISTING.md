@@ -20,3 +20,6 @@ Module and page downloads
 Uses your existing Canvas login. Course content is processed locally and is not uploaded to the developer's servers. No new permissions were added for offline export.
 
 Disclaimer: This independent project is not affiliated with or endorsed by Instructure Inc. or Canvas LMS.
+
+Public source code, installation instructions, and release checksums: https://github.com/MatthewLoyed/CanvasExtension
+Version 1.12.1 restores optional feedback submission with explicit disclosure and accurate error reporting.
