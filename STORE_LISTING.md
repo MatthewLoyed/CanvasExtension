@@ -23,3 +23,4 @@ Disclaimer: This independent project is not affiliated with or endorsed by Instr
 
 Public source code, installation instructions, and release checksums: https://github.com/MatthewLoyed/CanvasExtension
 Version 1.12.1 restores optional feedback submission with explicit disclosure and accurate error reporting.
+Version 1.12.2 prevents duplicate download buttons beside Canvas file links.

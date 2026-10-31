@@ -12,3 +12,5 @@ Reconciliation validation includes the combined automated suite, synthetic offli
 
 Feedback reads the running extension manifest version; tests derive the version from that same file. Formspree form name is Canvas Downloader Feedback. No additional test email was sent during reconciliation.
 
+
+October 31 follow-up: dashboard still showed 1.12.1 pending review and 1.12.0 published. Cancelled the pending 1.12.1 review to replace it with the checksum-verified GitHub v1.12.2 ZIP (duplicate inline-button fix). Confirmed Draft 1.12.2; submitted with automatic publication enabled. Dashboard confirmed Item submitted and Pending review. All 149 local tests pass. No claim of public 1.12.2 availability until approval.
