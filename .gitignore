@@ -16,3 +16,9 @@ node_modules/
 # SECURITY - NEVER COMMIT THESE
 *.pem
 .env
+
+.env.*
+!.env.example
+*.key
+*.p12
+*.pfx

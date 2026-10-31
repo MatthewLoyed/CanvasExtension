@@ -87,6 +87,7 @@ $ZipPath = Join-Path $TargetRoot $ZipName
 $Exclude = @(
     ".git",
     ".gitignore",
+    ".github",
     ".agent",
     "tests",
     "node_modules",

@@ -1,0 +1,30 @@
+name: Source release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test -- --runInBand
+      - name: Check version and package reviewed source
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          test "$GITHUB_REF_NAME" = "v$VERSION"
+          mkdir release
+          zip -r "release/canvas-downloader-$VERSION.zip" manifest.json src assets/icons LICENSE THIRD_PARTY_NOTICES.txt
+          cd release
+          sha256sum *.zip > SHA256SUMS.txt
+      - name: Publish source release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release/* --title "Canvas Downloader $GITHUB_REF_NAME (source build)" --notes "Built from the tagged source commit. SHA256SUMS.txt verifies the attached ZIP. This source build has not been verified as identical to an existing Chrome Web Store package."

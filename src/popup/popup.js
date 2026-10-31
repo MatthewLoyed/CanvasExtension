@@ -159,14 +159,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error('Submission failed');
                 }
             } catch (err) {
-                // Fallback for demonstration since endpoint is empty
-                console.warn(err);
-                showSuccess(); // Simulate success during testing
-
-                // If it really failed in production:
-                // alert("Could not send feedback. Please try again.");
-                // btnSendFeedback.innerText = originalText;
-                // btnSendFeedback.disabled = false;
+                console.warn('Feedback submission failed:', err.message);
+                alert('Feedback was not sent. Please use the support form linked in the privacy policy.');
+                btnSendFeedback.innerText = originalText;
+                btnSendFeedback.disabled = false;
             }
         });
     }
