@@ -79,7 +79,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Feedback Logic ---
-    const FORMSPREE_ENDPOINT = ''; // Set your Formspree endpoint here
+    // Public submission endpoint, not an account API key. Never embed private credentials.
+    const FORMSPREE_ENDPOINT = 'https://formspree.io/f/mbddrqao';
 
     function showFeedbackModal() {
         if (feedbackModal) {
@@ -127,9 +128,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const type = feedbackType.value;
-            const email = feedbackEmail.value || "Anonymous";
+            if (!feedbackEmail.checkValidity()) {
+                alert('Please enter a valid email address or leave it blank.');
+                return;
+            }
+            const email = feedbackEmail.value.trim();
             const version = chrome.runtime.getManifest().version;
-            const techInfo = `\n\n-- Tech Info --\nVersion: ${version}\nUser-Agent: ${navigator.userAgent}`;
+            const techInfo = `\n\n-- Extension Version --\n${version}`;
             const finalBody = `[${type}]\n${message}${techInfo}`;
 
             const originalText = btnSendFeedback.innerText;
@@ -137,17 +142,12 @@ document.addEventListener('DOMContentLoaded', () => {
             btnSendFeedback.disabled = true;
 
             try {
-                // Currently Formspree endpoint is empty, so we simulate a delay
-                if (!FORMSPREE_ENDPOINT) {
-                    await new Promise(resolve => setTimeout(resolve, 800));
-                    throw new Error("Formspree endpoint not specified");
-                }
-
                 const response = await fetch(FORMSPREE_ENDPOINT, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    credentials: 'omit',
                     body: JSON.stringify({
-                        email: email,
+                        ...(email ? { email } : {}),
                         message: finalBody,
                         _subject: `Extension Feedback: ${type}`
                     })
@@ -160,7 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (err) {
                 console.warn('Feedback submission failed:', err.message);
-                alert('Feedback was not sent. Please use the support form linked in the privacy policy.');
+                alert('Feedback could not be confirmed as sent. Please try again or use the support form linked in the privacy policy.');
                 btnSendFeedback.innerText = originalText;
                 btnSendFeedback.disabled = false;
             }
