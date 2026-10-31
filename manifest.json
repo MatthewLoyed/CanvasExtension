@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Canvas Downloader - Bulk Save Course Files",
-  "version": "1.12.1",
+  "version": "1.12.2",
   "description": "Save available Canvas course content and attachments in an offline ZIP, or bulk download selected module files.",
   "icons": {
     "16": "assets/icons/icon16.png",
